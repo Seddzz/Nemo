@@ -65,6 +65,8 @@ class EntityOut(BaseModel):
     text: str
     score: float
     source: str
+    uncertain: bool = False
+    confidence: str = "high"
 
 
 class DetectResponse(BaseModel):
@@ -94,6 +96,8 @@ def _to_out(entity: Entity) -> EntityOut:
         text=entity.text,
         score=entity.score,
         source=entity.source,
+        uncertain=entity.uncertain,
+        confidence=entity.confidence,
     )
 
 

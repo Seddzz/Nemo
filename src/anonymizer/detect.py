@@ -12,14 +12,18 @@ class Entity:
         end: Exclusive character offset in the full document text
         text: The actual matched text slice (text[start:end])
         score: Confidence 0.0-1.0 (1.0 for deterministic rule-based detectors)
-        source: Which detector found it ("regex", "checksum", "ner")
+        source: Which detector found it ("context", "regex", "checksum", "ner")
+        uncertain: Whether the span was found via second-pass lowercase fallback
+        confidence: Confidence tier ("high" or "medium")
     """
     label: str
     start: int
     end: int
     text: str
-    score: float
-    source: str
+    score: float = 1.0
+    source: str = "regex"
+    uncertain: bool = False
+    confidence: str = "high"
 
 
 class Detector(Protocol):

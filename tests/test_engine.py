@@ -88,3 +88,86 @@ def test_engine_defaults_on_real_text():
 
 def test_empty_text_returns_empty():
     assert DetectionEngine().detect_all("") == []
+
+
+def test_ner_span_covering_two_regex_spans_is_dropped():
+    engine = DetectionEngine([
+        FakeDetector([make("ner", 0, 10)]),
+        FakeDetector([make("regex", 0, 5), make("regex", 5, 10)]),
+    ])
+    result = engine.detect_all(TEXT)
+
+    assert [(e.source, e.start, e.end) for e in result] == [
+        ("regex", 0, 5),
+        ("regex", 5, 10),
+    ]
+
+
+def test_long_ner_span_loses_to_regex_overlap():
+    engine = DetectionEngine([
+        FakeDetector([make("ner", 0, 10)]),
+        FakeDetector([make("regex", 2, 4)]),
+    ])
+    result = engine.detect_all(TEXT)
+
+    assert [(e.source, e.start, e.end) for e in result] == [("regex", 2, 4)]
+
+
+def test_adjacent_spans_from_different_sources_are_kept():
+    engine = DetectionEngine([
+        FakeDetector([make("ner", 0, 5)]),
+        FakeDetector([make("regex", 5, 10)]),
+    ])
+    result = engine.detect_all(TEXT)
+
+    assert [(e.source, e.start, e.end) for e in result] == [
+        ("ner", 0, 5),
+        ("regex", 5, 10),
+    ]
+
+
+def test_context_beats_checksum_on_overlap():
+    engine = DetectionEngine([
+        FakeDetector([make("checksum", 0, 10)]),
+        FakeDetector([make("context", 0, 10)]),
+    ])
+    result = engine.detect_all(TEXT)
+
+    assert result[0].source == "context"
+
+
+def test_rule_beats_ner_on_rib():
+    """Rule (context) should win over NER on overlapping RIB text."""
+    from anonymizer.detect import Entity
+    from anonymizer.detectors.regex_detector import rib_detector
+    engine = DetectionEngine([
+        FakeDetector([Entity(label="SSN", start=4, end=7, text="780", score=1.0, source="ner")]),
+        rib_detector,
+    ])
+    text = "RIB 007 780 0001234567890123 45"
+    result = engine.detect_all(text)
+    # RIB should win, source should be "context"
+    assert len(result) == 1
+    assert result[0].label == "RIB"
+    assert result[0].source == "context"
+
+
+def test_rule_beats_ner_on_iban():
+    """Rule (context) should win over NER on overlapping IBAN text."""
+    from anonymizer.detect import Entity
+    from anonymizer.detectors.regex_detector import iban_context_detector
+    engine = DetectionEngine([
+        FakeDetector([
+            Entity(
+                label="CHECKSUM", start=4, end=8, text="12345678",
+                score=1.0, source="checksum",
+            ),
+        ]),
+        iban_context_detector,
+    ])
+    text = "IBAN MA64 0115 1900 0001 2050 0053 4921"
+    result = engine.detect_all(text)
+    # IBAN context should win
+    assert len(result) == 1
+    assert result[0].label == "IBAN"
+    assert result[0].source == "context"

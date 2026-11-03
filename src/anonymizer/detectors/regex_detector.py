@@ -2,6 +2,7 @@
 import re
 
 from anonymizer.detect import Entity
+from anonymizer.detectors.checksum import validate_ice, validate_rib
 
 
 class RegexDetector:
@@ -13,11 +14,13 @@ class RegexDetector:
         pattern: re.Pattern,
         source: str = "regex",
         group: int = 0,
+        validator=None,
     ):
         self.label = label
         self.pattern = pattern
         self.source = source
         self.group = group  # which capture group to use (0 = full match)
+        self.validator = validator
     
     def detect(self, text: str) -> list[Entity]:
         entities = []
@@ -25,13 +28,18 @@ class RegexDetector:
             matched_text = match.group(self.group)
             start = match.start(self.group)
             end = match.end(self.group)
+            confidence = "high"
+            if self.validator is not None:
+                confidence = "high" if self.validator(matched_text) else "medium"
             entities.append(Entity(
                 label=self.label,
                 start=start,
                 end=end,
                 text=matched_text,
                 score=1.0,
-                source=self.source
+                source=self.source,
+                uncertain=False,
+                confidence=confidence,
             ))
         return entities
 
@@ -64,6 +72,63 @@ PHONE_PATTERN = re.compile(
     r"\b"                         # word boundary
 )
 
+# French and Moroccan phone numbers: +212 6 61 23 45 67, +33 6 12 34 56 78,
+# 06 12 34 56 78. The leading 0 form covers both numbering plans.
+INTL_PHONE_PATTERN = re.compile(
+    r"(?<![\w+])"
+    r"(?:"
+    r"(?:\+212|00212|0)[\s.-]?[2567](?:[\s.-]?\d{2}){4}"
+    r"|(?:\+33|0033)[\s.-]?[1-9](?:[\s.-]?\d{2}){4}"
+    r"|0[1-9](?:[\s.-]?\d{2}){4}"
+    r")"
+    r"(?!\d)"
+)
+
+# Moroccan ICE (15 digits) and CIN (1-2 letters + 5-7 digits) are only
+# trusted when explicitly labelled, which keeps false positives near zero.
+ICE_PATTERN = re.compile(r"(?i)\bICE\b[\s:.\-]{0,3}(\d{15})\b")
+CIN_PATTERN = re.compile(
+    r"(?i)\bC\.?\s?I\.?\s?N\.?\b[\s:.\-]{0,3}([A-Z]{1,2}\d{5,7})\b"
+)
+
+# Moroccan RIB: 24 digits grouped as 3-3-16-2 (spaces, dots or dashes optional).
+RIB_PATTERN = re.compile(
+    r"(?i)\bRIB\b[\s:.\-]{0,3}"
+    r"(\d{3}(?:[\s.-]?\d{3})(?:[\s.-]?\d{4}){4}(?:[\s.-]?\d{2}))\b"
+)
+
+# Labelled IBANs are redacted even when their checksum is invalid.
+IBAN_CONTEXT_PATTERN = re.compile(
+    r"(?i)\bIBAN\b[\s:.\-]{0,3}"
+    r"([A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){1,6}(?:[ ]?[A-Z0-9]{1,4}))\b"
+)
+
+# Street lines such as "12 rue Hassan II", "45 avenue Mohammed V" or
+# "12 rue de la Paix". French particles are allowed before capitalized names.
+STREET_PARTICLE = r"(?:de|du|des|la|le|les|el|al)"
+STREET_NAME = (
+    rf"(?:{STREET_PARTICLE}\s+)*[A-Z][\w'’-]+"
+    rf"(?:\s+(?:{STREET_PARTICLE}\s+)*[A-Z][\w'’-]+){{0,4}}"
+)
+STREET_ADDRESS_PATTERN = re.compile(
+    r"\b(\d{1,4}\s+"
+    r"(?:[Rr]ue|[Aa]venue|[Aa]v\.?|[Bb]d|[Bb]oulevard|[Pp]lace|[Cc]hemin|"
+    r"[Rr]oute|[Ii]mpasse|[Aa]ll[ée]e|[Ss]quare)\s+"
+    rf"{STREET_NAME})"
+)
+
+# Neighbourhoods such as "quartier Al Qods" or "hay Salam".
+NEIGHBORHOOD_PATTERN = re.compile(
+    r"(?i:\b(?:quartier|hay)\s+)"
+    r"([A-Z][\w'’-]+(?:\s+[A-Z][\w'’-]+){0,3})"
+)
+
+# Legal entities such as "Atlas Conseil SARL".
+ORGANIZATION_PATTERN = re.compile(
+    r"\b([A-Z][\w&'’.-]+(?:\s+[A-Z][\w&'’.-]+){0,5}\s+"
+    r"(?:SARL|SA|SAS|SASU|SNC|SCI|GIE))\b"
+)
+
 # US ZIP: 12345 or 12345-6789
 # Must be at word boundary, not preceded by digit-dash, not followed by digit/dash
 ZIP_PATTERN = re.compile(r"(?<!\d-)\b\d{5}(?:-\d{4})?(?![-\d])")
@@ -85,16 +150,42 @@ DATE_PATTERN = re.compile(
 # Detector instances (export these)
 email_detector = RegexDetector("EMAIL", EMAIL_PATTERN, group=1)
 phone_detector = RegexDetector("PHONE", PHONE_PATTERN)
+intl_phone_detector = RegexDetector("PHONE", INTL_PHONE_PATTERN)
 zip_detector = RegexDetector("ZIP", ZIP_PATTERN)
 date_detector = RegexDetector("DATE", DATE_PATTERN)
+ice_detector = RegexDetector(
+    "ICE", ICE_PATTERN, source="context", group=1, validator=validate_ice
+)
+cin_detector = RegexDetector("CIN", CIN_PATTERN, source="context", group=1)
+rib_detector = RegexDetector(
+    "RIB", RIB_PATTERN, source="context", group=1, validator=validate_rib
+)
+iban_context_detector = RegexDetector("IBAN", IBAN_CONTEXT_PATTERN, source="context", group=1)
+street_address_detector = RegexDetector(
+    "ADDRESS", STREET_ADDRESS_PATTERN, source="context", group=1
+)
+neighborhood_detector = RegexDetector(
+    "ADDRESS", NEIGHBORHOOD_PATTERN, source="context", group=1
+)
+organization_detector = RegexDetector(
+    "ORGANIZATION", ORGANIZATION_PATTERN, source="context", group=1
+)
 
 
 # Convenience: all regex detectors
 ALL_REGEX_DETECTORS = [
     email_detector,
     phone_detector,
+    intl_phone_detector,
     zip_detector,
     date_detector,
+    ice_detector,
+    cin_detector,
+    rib_detector,
+    iban_context_detector,
+    street_address_detector,
+    neighborhood_detector,
+    organization_detector,
 ]
 
 

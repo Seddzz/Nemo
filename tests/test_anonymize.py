@@ -109,3 +109,51 @@ def test_fake_strategy_gives_distinct_values_distinct_surrogates():
     ]
     table = replacement_table(entities, strategy="fake", faker=FakeGenerator(seed=2))
     assert len(set(table.values())) == 2
+
+
+def test_fake_strategy_handles_low_cardinality_labels():
+    entities = [
+        Entity("GENDER", 0, 1, "a", 1.0, "ner"),
+        Entity("GENDER", 2, 3, "b", 1.0, "ner"),
+    ]
+    table = replacement_table(entities, strategy="fake", faker=FakeGenerator(seed=1))
+
+    assert len(table) == 2
+    assert len(set(table.values())) == 2
+
+
+def test_fake_id_preserves_shape():
+    entity = Entity("ID", 0, 8, "ab123456", 1.0, "ner")
+    table = replacement_table([entity], strategy="fake", faker=FakeGenerator(seed=1))
+    value = table[("ID", "ab123456")]
+
+    assert len(value) == len(entity.text)
+    assert value[:2].isalpha()
+    assert value[2:].isdigit()
+
+
+def test_fake_supports_new_openmed_labels():
+    labels = [
+        "ADDRESS",
+        "CITY",
+        "STATE",
+        "USERNAME",
+        "IPADDRESS",
+        "MACADDRESS",
+        "RIB",
+        "ICE",
+        "CIN",
+        "DATEOFBIRTH",
+    ]
+    generator = FakeGenerator(seed=4)
+
+    for label in labels:
+        assert generator.generate(label, "original") != ""
+
+
+def test_fake_rib_has_24_digits():
+    generator = FakeGenerator(seed=5)
+    value = generator.generate("RIB", "007 780 0001234567890123 45")
+
+    assert value.isdigit()
+    assert len(value) == 24

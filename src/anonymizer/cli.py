@@ -1,126 +1,149 @@
-"""Command-line interface for the anonymizer."""
-from enum import StrEnum
-from pathlib import Path
-from typing import Annotated
+"""Command-line text anonymizer: read text, write the rewritten text."""
+import argparse
+import json
+import sys
 
-import typer
-
-from anonymizer import __version__
 from anonymizer.anonymize import anonymize_text
 from anonymizer.detect import Entity
-from anonymizer.detectors import ALL_CHECKSUM_DETECTORS, ALL_REGEX_DETECTORS, NerDetector
+from anonymizer.detectors.checksum import ALL_CHECKSUM_DETECTORS
+from anonymizer.detectors.regex_detector import ALL_REGEX_DETECTORS
 from anonymizer.engine import DetectionEngine
-from anonymizer.extract import extract_pdf
-from anonymizer.pdf_output import redact_pdf
-
-app = typer.Typer(help="Anonymize English documents: detect and redact.")
-
-engine = DetectionEngine()
+from anonymizer.fakes import FakeGenerator, guess_locale
 
 
-class Strategy(StrEnum):
-    placeholder = "placeholder"
-    fake = "fake"
+def _label_set(value: str | None) -> set[str] | None:
+    if not value:
+        return None
+    return {label.strip().upper() for label in value.split(",") if label.strip()}
 
 
-_ner_detector: NerDetector | None = None
-_ner_engine: DetectionEngine | None = None
+def _build_engine(args: argparse.Namespace) -> DetectionEngine:
+    detectors = [*ALL_REGEX_DETECTORS, *ALL_CHECKSUM_DETECTORS]
+    if not args.no_ner:
+        from anonymizer.detectors.ner import NerDetector
 
-
-def engine_for(ner: bool) -> DetectionEngine:
-    """Return the base engine, or lazily build the NER-enabled one."""
-    global _ner_detector, _ner_engine
-    if not ner:
-        return engine
-    if _ner_engine is None:
-        _ner_detector = NerDetector()
-        _ner_engine = DetectionEngine(
-            [*ALL_REGEX_DETECTORS, *ALL_CHECKSUM_DETECTORS, _ner_detector]
-        )
-    return _ner_engine
-
-
-def read_text(path: Path) -> str:
-    """Read a document's full text, extracting text layers from PDFs."""
-    if path.suffix.lower() == ".pdf":
-        return "".join(page.text for page in extract_pdf(path))
-    return path.read_text(encoding="utf-8")
-
-
-def print_entities(entities: list[Entity]) -> None:
-    if not entities:
-        typer.echo("No entities found.")
-        return
-    for entity in entities:
-        typer.echo(
-            f"{entity.label:<14} {entity.start:>5}:{entity.end:<5} "
-            f"{entity.source:<9} {entity.score:.2f}  {entity.text}"
-        )
-
-
-@app.callback(invoke_without_command=True)
-def console(ctx: typer.Context) -> None:
-    """Open the interactive Nemo console when no subcommand is given."""
-    if ctx.invoked_subcommand is None:
-        from anonymizer.dashboard import run_console
-
-        run_console()
-
-
-def anonymize_document(
-    path: Path,
-    output: Path,
-    strategy: Strategy,
-    engine_override: DetectionEngine | None = None,
-) -> None:
-    """Redact ``path`` into ``output`` (PDF in -> PDF out, txt stays text)."""
-    text = read_text(path)
-    entities = (engine_override or engine).detect_all(text)
-
-    if output.suffix.lower() == ".pdf":
-        if path.suffix.lower() != ".pdf":
-            raise typer.BadParameter("A PDF output requires a PDF input document.")
-        result = redact_pdf(path, entities, strategy=strategy.value)
-        output.write_bytes(result.pdf_bytes)
-        typer.echo(f"Redacted {len(entities)} entities -> {output}")
-        typer.echo(f"In-place stamps: {result.applied}   Skipped: {result.missed}")
-        if result.missed:
-            typer.echo(
-                "Some entities could not be located on the page layout; review the output."
+        if not args.quiet:
+            sys.stderr.write(
+                "Loading the OpenMed privacy-filter model "
+                "(first run downloads about 2.8 GB into .hf-cache)...\n"
             )
+        detectors.append(
+            NerDetector(
+                model_name=args.model,
+                confidence_threshold=args.min_score,
+                max_tokens=args.max_tokens,
+                second_pass=not args.no_second_pass,
+                include_labels=_label_set(args.include_labels),
+                exclude_labels=_label_set(args.exclude_labels),
+            )
+        )
+    return DetectionEngine(detectors)
+
+
+def _entity_dict(entity: Entity) -> dict[str, object]:
+    return {
+        "label": entity.label,
+        "start": entity.start,
+        "end": entity.end,
+        "text": entity.text,
+        "score": entity.score,
+        "source": entity.source,
+        "uncertain": entity.uncertain,
+        "confidence": entity.confidence,
+    }
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python -m anonymizer.cli",
+        description="Rewrite text with fake entities (or numbered placeholders).",
+    )
+    parser.add_argument("text", nargs="*", help="text to anonymize; omit to read stdin")
+    parser.add_argument(
+        "--strategy",
+        choices=("fake", "placeholder"),
+        default="fake",
+        help="replacement strategy (default: fake)",
+    )
+    parser.add_argument(
+        "--no-ner",
+        action="store_true",
+        help="skip the OpenMed model and use regex/checksum detectors only",
+    )
+    parser.add_argument("--json", action="store_true", help="print redacted text and entities")
+    parser.add_argument("--seed", type=int, default=None, help="seed for reproducible fakes")
+    parser.add_argument(
+        "--locale",
+        choices=("auto", "en_US", "fr_FR"),
+        default="auto",
+        help="locale for fake values (default: auto)",
+    )
+    parser.add_argument(
+        "--min-score",
+        type=float,
+        default=0.5,
+        help="minimum NER confidence (default: 0.5)",
+    )
+    parser.add_argument("--model", default=None, help="override the NER model name")
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=512,
+        help="NER window size in tokens (default: 512)",
+    )
+    parser.add_argument(
+        "--no-second-pass",
+        action="store_true",
+        help="disable the lowercase-name second NER pass",
+    )
+    parser.add_argument(
+        "--include-labels",
+        default=None,
+        help="comma-separated NER labels to keep (e.g. PERSON,EMAIL)",
+    )
+    parser.add_argument(
+        "--exclude-labels",
+        default=None,
+        help="comma-separated NER labels to drop (overrides the default skip list)",
+    )
+    parser.add_argument("--quiet", action="store_true", help="hide progress messages")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _parser()
+    args = parser.parse_args(argv)
+
+    if args.text:
+        text = " ".join(args.text)
     else:
-        redacted = anonymize_text(text, entities, strategy=strategy.value)
-        output.write_text(redacted, encoding="utf-8")
-        typer.echo(f"Redacted {len(entities)} entities -> {output}")
+        if sys.stdin.isatty():
+            parser.error("provide text as arguments or pipe it through stdin")
+        text = sys.stdin.read()
+
+    engine = _build_engine(args)
+    entities = engine.detect_all(text)
+
+    if args.strategy == "fake":
+        locale = guess_locale(text) if args.locale == "auto" else args.locale
+        faker = FakeGenerator(seed=args.seed, locale=locale)
+    else:
+        faker = None
+
+    redacted = anonymize_text(text, entities, strategy=args.strategy, faker=faker)
+
+    if args.json:
+        payload = {
+            "redacted": redacted,
+            "entities": [_entity_dict(entity) for entity in entities],
+        }
+        sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    else:
+        sys.stdout.write(redacted)
+        if not redacted.endswith("\n"):
+            sys.stdout.write("\n")
+    return 0
 
 
-@app.command()
-def detect(
-    path: Annotated[Path, typer.Argument(help="Input file (.txt or .pdf).")],
-    ner: Annotated[
-        bool, typer.Option("--ner/--no-ner", help="Add the transformer NER pass.")
-    ] = False,
-) -> None:
-    """Detect and list entities in a document."""
-    print_entities(engine_for(ner).detect_all(read_text(path)))
-
-
-@app.command()
-def anonymize(
-    path: Annotated[Path, typer.Argument(help="Input file (.txt or .pdf).")],
-    output: Annotated[Path, typer.Option("-o", "--output", help="Redacted output path.")],
-    strategy: Annotated[
-        Strategy, typer.Option("--strategy", help="Redaction strategy.")
-    ] = Strategy.placeholder,
-    ner: Annotated[
-        bool, typer.Option("--ner/--no-ner", help="Add the transformer NER pass.")
-    ] = False,
-) -> None:
-    """Redact a document into a clean output file."""
-    anonymize_document(path, output, strategy, engine_for(ner))
-
-
-@app.command()
-def version() -> None:
-    """Print the anonymizer version."""
-    typer.echo(__version__)
+if __name__ == "__main__":
+    raise SystemExit(main())

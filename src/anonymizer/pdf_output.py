@@ -66,7 +66,7 @@ def redact_pdf(
     """
     pages = extract_pdf(path)
     full_text = "".join(page.text for page in pages)
-    replacements = replacement_table(entities, strategy=strategy)
+    replacements = replacement_table(entities, strategy=strategy, text=full_text)
     redacted = anonymize_text(full_text, entities, strategy=strategy, replacements=replacements)
 
     document = fitz.open(path)

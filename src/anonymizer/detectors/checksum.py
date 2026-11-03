@@ -4,17 +4,45 @@ import re
 from anonymizer.detect import Entity
 
 
+def _is_embedded_number(text: str, start: int, end: int) -> bool:
+    """Return True when a numeric candidate is part of a longer identifier."""
+    right = text[end:].lstrip()
+    if right and right[0].isdigit():
+        return True
+    left = text[:start].rstrip()
+    if not left:
+        return False
+    token_match = re.search(r"(\S+)$", left)
+    if token_match is None:
+        return False
+    token = token_match.group(1)
+    if token.isdigit():
+        return True
+    return bool(re.fullmatch(r"[A-Za-z]{2}\d{2,}", token))
+
+
 class ChecksumDetector:
     """Base class for checksum-validated detectors."""
     
-    def __init__(self, label: str, pattern: re.Pattern, source: str = "checksum"):
+    def __init__(
+        self,
+        label: str,
+        pattern: re.Pattern,
+        source: str = "checksum",
+        embedded_guard: bool = True,
+    ):
         self.label = label
         self.pattern = pattern
         self.source = source
+        self.embedded_guard = embedded_guard
     
     def detect(self, text: str) -> list[Entity]:
         entities = []
         for match in self.pattern.finditer(text):
+            if self.embedded_guard and _is_embedded_number(
+                text, match.start(), match.end()
+            ):
+                continue
             candidate = match.group().replace(" ", "").replace("-", "")
             if self.validate(candidate):
                 entities.append(Entity(
@@ -70,7 +98,7 @@ def validate_iban(iban: str) -> bool:
 
 class IBANDetector(ChecksumDetector):
     def __init__(self):
-        super().__init__("IBAN", IBAN_PATTERN)
+        super().__init__("IBAN", IBAN_PATTERN, embedded_guard=False)
     
     def validate(self, candidate: str) -> bool:
         return validate_iban(candidate)
@@ -210,14 +238,96 @@ class NIRDetector(ChecksumDetector):
 
 
 # ============================================================
+# ICE: Moroccan Company ID (15 digits), mod 97 == 0
+# ============================================================
+ICE_NUM_PATTERN = re.compile(r"\b\d{15}\b")
+
+
+def validate_ice(candidate: str) -> bool:
+    digits = "".join(c for c in candidate if c.isdigit())
+    if len(digits) != 15:
+        return False
+    try:
+        return int(digits) % 97 == 0
+    except ValueError:
+        return False
+
+
+class ICEDetector(ChecksumDetector):
+    def __init__(self):
+        super().__init__("ICE", ICE_NUM_PATTERN, embedded_guard=True)
+    
+    def validate(self, candidate: str) -> bool:
+        return validate_ice(candidate)
+
+
+# ============================================================
+# RIB: Moroccan Bank Account (24 digits), key = 97 - ((first22 * 100) % 97)
+# ============================================================
+RIB_NUM_PATTERN = re.compile(r"\b\d{3}[ .\-]?\d{3}[ .\-]?(?:\d{4}[ .\-]?){4}\d{2}\b")
+
+
+def validate_rib(candidate: str) -> bool:
+    digits = "".join(c for c in candidate if c.isdigit())
+    if len(digits) != 24:
+        return False
+    try:
+        first22 = digits[:22]
+        expected = 97 - ((int(first22) * 100) % 97)
+        given = int(digits[22:])
+        return expected == given
+    except ValueError:
+        return False
+
+
+class RIBDetector(ChecksumDetector):
+    def __init__(self):
+        super().__init__("RIB", RIB_NUM_PATTERN, embedded_guard=True)
+    
+    def validate(self, candidate: str) -> bool:
+        return validate_rib(candidate)
+
+
+# ============================================================
+# MA IBAN: Moroccan IBAN (MA + 2 digits + 24 chars/digits), always masked
+# ============================================================
+MA_IBAN_PATTERN = re.compile(r"\bMA\d{2}(?:[ ]?[0-9A-Z]{4}){6}[ ]?[0-9A-Z]{4}\b")
+
+
+class MAIBANDetector:
+    def detect(self, text: str) -> list[Entity]:
+        entities = []
+        # Find any MA + 2-digit country code substring, then strip spaces
+        for m in re.finditer(r"\bMA\d{2}\S*", text):
+            candidate = m.group().replace(" ", "").replace("-", "")
+            if len(candidate) == 28 and candidate.startswith("MA"):
+                valid = validate_iban(candidate)
+                confidence = "high" if valid else "medium"
+                entities.append(Entity(
+                    label="IBAN",
+                    start=m.start(),
+                    end=m.end(),
+                    text=m.group(),
+                    score=1.0,
+                    source="checksum",
+                    uncertain=False,
+                    confidence=confidence,
+                ))
+        return entities
+
+
+# ============================================================
 # Export all checksum detectors
 # ============================================================
 ALL_CHECKSUM_DETECTORS = [
     IBANDetector(),
+    MAIBANDetector(),
     CardDetector(),
     SIRENDetector(),
     SIRETDetector(),
     NIRDetector(),
+    ICEDetector(),
+    RIBDetector(),
 ]
 
 
