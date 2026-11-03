@@ -4,8 +4,8 @@ import { Check, Copy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-type Message = { role: "user" | "assistant"; content: string; at: number };
-type Source = { id: string; title: string };
+export type Message = { role: "user" | "assistant"; content: string; at: number };
+export type Source = { id: string; title: string };
 
 const SUGGESTIONS = [
   "What is Nemo?",
@@ -18,7 +18,7 @@ function clock(at: number): string {
   return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function CodeBlock({ lang, code }: { lang: string; code: string }) {
+export function CodeBlock({ lang, code }: { lang: string; code: string }) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
@@ -51,7 +51,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   );
 }
 
-function inline(text: string): ReactNode[] {
+export function inline(text: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   const pattern = /(\*\*[^*]+\*\*|`[^`]+`)/g;
   let last = 0;
@@ -73,7 +73,7 @@ function inline(text: string): ReactNode[] {
 
 type ListItem = { num: number | null; text: string };
 
-function renderMarkdown(text: string): ReactNode {
+export function renderMarkdown(text: string): ReactNode {
   const lines = text.split(/\r?\n/);
   const blocks: ReactNode[] = [];
   let list: ListItem[] = [];

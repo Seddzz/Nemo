@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-120b";
+const DEFAULT_MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-120b";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -19,15 +19,19 @@ Context:
 `;
 
 export async function POST(request: Request) {
-  const apiKey = process.env.GROQ_API_KEY;
+  const body = (await request.json()) as { messages?: Message[]; apiKey?: string; model?: string };
+  const apiKey = body.apiKey?.trim() || process.env.GROQ_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { error: "GROQ_API_KEY is not configured on the server." },
+      {
+        error:
+          "No Groq API key. Add one in Settings, or set GROQ_API_KEY for the server.",
+      },
       { status: 500 },
     );
   }
 
-  const body = (await request.json()) as { messages?: Message[] };
+  const model = body.model?.trim() || DEFAULT_MODEL;
   const messages = (body.messages ?? [])
     .filter(
       (message) =>
@@ -50,7 +54,7 @@ export async function POST(request: Request) {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       temperature: 0.2,
       messages: [{ role: "system", content: SYSTEM + context }, ...messages.slice(-6)],
     }),

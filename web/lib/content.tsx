@@ -54,18 +54,6 @@ const ANON_RESPONSE = `{
   ]
 }`;
 
-const CLI = `# Inspect what would be detected
-anon detect contract.txt
-
-# Redact with placeholders (default)
-anon anonymize contract.txt -o contract.clean.txt
-
-# Use realistic fake values instead of placeholders
-anon anonymize contract.txt -o contract.clean.txt --strategy fake
-
-# PDFs are supported too (text layer required)
-anon anonymize report.pdf -o report.clean.pdf`;
-
 const DOCKER = `# Build the CPU-only image
 docker build -t anonymizer-api .
 
@@ -75,10 +63,27 @@ docker run --rm -p 8000:8000 anonymizer-api
 # Or with compose
 docker compose up --build`;
 
+const WEB = `# terminal 1 — engine (repo root)
+.venv\\Scripts\\uvicorn anonymizer.api:app --reload
+
+# terminal 2 — web app
+cd web
+npm install
+npm run dev`;
+
+const CLI = `# Fake entities (default), FR/EN, auto locale
+.venv\\Scripts\\python -m anonymizer.cli "Karim El Amrani habite 12 rue Hassan II, oujda."
+
+# Numbered placeholders, no model download
+.venv\\Scripts\\python -m anonymizer.cli --strategy placeholder --no-ner "CIN AB123456"
+
+# JSON with entity spans
+cat document.txt | .venv\\Scripts\\python -m anonymizer.cli --json`;
+
 const EVAL = `# Synthetic docs, regex + checksum detectors
 python -m eval.run -n 200 --seed 0
 
-# Include the NER model (downloads dslim/bert-base-NER on first run)
+# Include the OpenMed model (downloads ~2.8 GB into .hf-cache on first run)
 python -m eval.run -n 200 --seed 0 --ner`;
 
 export const SECTIONS: DocSection[] = [
@@ -87,7 +92,7 @@ export const SECTIONS: DocSection[] = [
     group: "Getting started",
     label: "Introduction",
     title: "Introduction",
-    subtitle: "Local, one-way PII anonymization for English text",
+    subtitle: "Local, one-way PII anonymization for French and English text",
     toc: [
       { id: "what", label: "What it does" },
       { id: "pipeline", label: "The pipeline" },
@@ -96,33 +101,35 @@ export const SECTIONS: DocSection[] = [
     body: (
       <>
         <p>
-          <strong>Nemo</strong> finds personally identifiable information in English documents and
-          replaces it with placeholders or fakes. Everything runs locally — no text leaves your
-          machine unless you choose to send it somewhere, and no mapping is ever kept: redaction is
-          one-way on purpose.
+          <strong>Nemo</strong> finds personally identifiable information in French and English
+          documents and replaces it with placeholders or fakes. Everything runs locally — no text
+          leaves your machine unless you choose to send it somewhere, and no mapping is ever kept:
+          redaction is one-way on purpose.
         </p>
         <div className="callout">
           <span>
-            <strong>Scope:</strong> English-language text. The NER model is{" "}
-            <code>dslim/bert-base-NER</code>; regex rules are US-centric; checksums are
-            international.
+            <strong>Scope:</strong> French and English text (Arabic is deferred). The NER model is{" "}
+            <code>OpenMed/privacy-filter-multilingual-v2</code>; context and phone rules cover
+            French/Moroccan formats; checksums are international.
           </span>
         </div>
 
         <h2 id="what">What it does</h2>
         <ul>
-          <li>Detects emails, phones, ZIP codes and dates with regex.</li>
+          <li>Detects emails, French/Moroccan and US phones, ZIP codes and dates with regex.</li>
+          <li>Pins labelled ICE, CIN, RIB, IBAN, street and organisation spans with context rules.</li>
           <li>Validates IBANs, card numbers, SIREN, SIRET and NIR with checksums.</li>
-          <li>Finds names, organisations and locations with a transformer NER model.</li>
-          <li>Redacts with stable placeholders or realistic fake values.</li>
+          <li>Finds names, organisations, addresses and locations with a multilingual NER model.</li>
+          <li>Redacts with stable placeholders or realistic fake values (CLI, API or web app).</li>
           <li>Keeps no history: redacted text is the only artifact.</li>
         </ul>
 
         <h2 id="pipeline">The pipeline</h2>
         <p>
           Every detector returns the same <code>Entity</code> shape, so results merge cleanly.
-          Overlapping spans are resolved by trust: <strong>checksum beats regex beats NER</strong>,
-          then longer spans win, then higher confidence.
+          Overlapping spans are resolved by trust:{" "}
+          <strong>context beats checksum beats regex beats NER</strong>, then longer spans win, then
+          higher confidence.
         </p>
         <CodeBlock label="Entity" code={ENTITY_JSON} />
 
@@ -149,7 +156,7 @@ export const SECTIONS: DocSection[] = [
     toc: [
       { id: "install", label: "Install" },
       { id: "serve", label: "Serve the API" },
-      { id: "cli-quick", label: "CLI" },
+      { id: "web", label: "Web app" },
     ],
     body: (
       <>
@@ -165,11 +172,13 @@ export const SECTIONS: DocSection[] = [
           <code>/docs</code> and the OpenAPI schema at <code>/openapi.json</code>.
         </p>
         <CodeBlock label="Shell" code={RUN_API} />
-        <h2 id="cli-quick">CLI</h2>
+        <h2 id="web">Web app</h2>
         <p>
-          The editable install exposes an <code>anon</code> command. Try{" "}
-          <code>anon --help</code> to see every subcommand.
+          The UI is a Next.js app in <code>web/</code>. It talks to the engine on{" "}
+          <code>http://localhost:8000</code> and runs entirely on your machine. The default route is
+          the upload page; chat and docs live in the same shell.
         </p>
+        <CodeBlock label="Shell" code={WEB} />
       </>
     ),
   },
@@ -206,11 +215,14 @@ export const SECTIONS: DocSection[] = [
             </tr>
             <tr>
               <td>PHONE</td>
-              <td>US formats: <code>(555) 123-4567</code>, <code>+1 555 123 4567</code>.</td>
+              <td>
+                US, French and Moroccan formats: <code>(555) 123-4567</code>,{" "}
+                <code>+33 6 12 34 56 78</code>, <code>+212 6 61 23 45 67</code>.
+              </td>
             </tr>
             <tr>
               <td>ZIP</td>
-              <td><code>12345</code> and <code>12345-6789</code>.</td>
+              <td><code>12345</code>, <code>12345-6789</code>, French five-digit codes.</td>
             </tr>
             <tr>
               <td>DATE</td>
@@ -222,25 +234,33 @@ export const SECTIONS: DocSection[] = [
         <h2 id="checksum">Checksum detectors</h2>
         <ul>
           <li><strong>IBAN</strong> — ISO 7064 mod-97.</li>
-          <li><strong>CARD</strong> — Luhn, 13–19 digits.</li>
+          <li><strong>CARD</strong> — Luhn, 13–19 digits, with an embedded-number guard so a card fragment inside an IBAN/RIB is rejected.</li>
           <li><strong>SIREN / SIRET</strong> — Luhn-validated French company identifiers.</li>
           <li><strong>NIR</strong> — French social security number, including Corsica and overseas.</li>
         </ul>
+        <p>
+          A <strong>context</strong> layer sits above these for labelled identifiers — ICE, CIN,
+          RIB, IBAN, street addresses, neighbourhoods and organizations — so a label wins over a
+          fragment detected inside it.
+        </p>
 
         <h2 id="ner">NER detector</h2>
         <p>
-          <code>NerDetector</code> wraps <code>dslim/bert-base-NER</code> and maps{" "}
-          <code>PER</code>, <code>ORG</code>, <code>LOC</code> and <code>MISC</code> to{" "}
-          <code>PERSON</code>, <code>ORGANIZATION</code>, <code>LOCATION</code> and{" "}
-          <code>MISC</code>. It only downloads the model when first used, and in the API it is
-          opt-in via <code>ner: true</code>.
+          <code>NerDetector</code> wraps <code>OpenMed/privacy-filter-multilingual-v2</code>, a
+          1.4B-parameter multilingual model with 217 BIOES labels. A custom decoder, span snap and
+          merge pass reconstruct full names, addresses, dates, emails and phones; labels are
+          canonicalized to <code>PERSON</code>, <code>ADDRESS</code>, <code>ORGANIZATION</code>,{" "}
+          <code>ZIP</code>, <code>CARD</code> and friends. Long documents are windowed (512 tokens,
+          64 overlap), and a second pass on title-cased text recovers lowercase names. The model
+          downloads on first use into <code>.hf-cache/</code> and in the API it is opt-in via{" "}
+          <code>ner: true</code>.
         </p>
 
         <h2 id="overlaps">Overlap resolution</h2>
         <p>
           When two entities overlap, the higher-ranked one wins: source priority first
-          (<code>checksum</code> &gt; <code>regex</code> &gt; <code>ner</code>), then span length,
-          then score.
+          (<code>context</code> &gt; <code>checksum</code> &gt; <code>regex</code> &gt;{" "}
+          <code>ner</code>), then span length, then score.
         </p>
       </>
     ),
@@ -332,8 +352,9 @@ export const SECTIONS: DocSection[] = [
         <p>
           Body: <code>text</code> (required), <code>strategy</code> (
           <code>placeholder</code> or <code>fake</code>) and <code>ner</code> (default{" "}
-          <code>false</code>). Set <code>ner: true</code> to include the transformer detector; the
-          model downloads on the first request and is cached afterwards.
+          <code>false</code>). Set <code>ner: true</code> to include the OpenMed transformer
+          detector; the ~2.8 GB model downloads into <code>.hf-cache/</code> on the first request
+          and is cached afterwards.
         </p>
         <CodeBlock label="Request" code={ANON_REQUEST} />
         <CodeBlock label="Response" code={ANON_RESPONSE} />
@@ -358,18 +379,67 @@ export const SECTIONS: DocSection[] = [
     group: "Interfaces",
     label: "CLI",
     title: "CLI",
-    subtitle: "Batch the same pipeline from a terminal",
+    subtitle: "Text in, rewritten text out",
     toc: [
-      { id: "commands", label: "Commands" },
+      { id: "usage", label: "Usage" },
+      { id: "flags", label: "Flags" },
     ],
     body: (
       <>
         <p>
-          The <code>anon</code> command wraps the same engine for scripts and folder-wide runs.
-          PDFs are read locally; the text layer must exist (scanned pages raise an error).
+          The CLI runs the same detection engine as the API and writes the rewritten text to
+          stdout. Fake entities are the default; pass <code>--strategy placeholder</code> for
+          numbered tokens. Omit the text argument to read stdin.
         </p>
-        <h2 id="commands">Commands</h2>
+        <h2 id="usage">Usage</h2>
         <CodeBlock label="Shell" code={CLI} />
+        <h2 id="flags">Flags</h2>
+        <ul>
+          <li><code>--no-ner</code> — regex/checksum/context only, no model download.</li>
+          <li><code>--json</code> — output <code>{`{"redacted": "...", "entities": [...]}`}</code>.</li>
+          <li><code>--seed</code> — reproducible fake values.</li>
+          <li><code>--locale auto|en_US|fr_FR</code> — fake-value locale (default auto).</li>
+          <li><code>--min-score</code> — NER confidence threshold (default 0.5).</li>
+          <li><code>--include-labels</code> / <code>--exclude-labels</code> — override the NER label policy.</li>
+          <li><code>--no-second-pass</code> — disable the lowercase-name pass.</li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: "web-app",
+    group: "Interfaces",
+    label: "Web app",
+    title: "Web app",
+    subtitle: "Anonymize, chat and docs in one local shell",
+    toc: [
+      { id: "routes", label: "Routes" },
+      { id: "settings", label: "Settings" },
+    ],
+    body: (
+      <>
+        <p>
+          Run the engine and the web app side by side. The app is local-first: uploads go to the
+          engine on your machine, and chat history and settings stay in the browser.
+        </p>
+        <h2 id="routes">Routes</h2>
+        <ul>
+          <li>
+            <code>/</code> — upload a <code>.txt</code> or <code>.pdf</code> and get a redacted copy.
+          </li>
+          <li>
+            <code>/chat</code> — ask Nemo about redaction; the status card shows the latest
+            redaction.
+          </li>
+          <li>
+            <code>/docs</code> — this documentation.
+          </li>
+        </ul>
+        <h2 id="settings">Settings</h2>
+        <p>
+          Display name, engine URL, Groq API key and model are stored in <code>localStorage</code>.
+          The API key is sent per request and never persisted server-side.
+        </p>
       </>
     ),
   },
@@ -446,18 +516,27 @@ export const SECTIONS: DocSection[] = [
         <h2 id="model">Model behaviour</h2>
         <ul>
           <li>
-            The NER backbone is capitalization-sensitive: lowercase names such as{" "}
-            <code>marcus aurelius</code> are missed, while <code>Marcus Aurelius</code> is found.
+            Lowercase names are weak; the second pass title-cases text and recovers many of them
+            (<code>karim el amrani</code> becomes <code>PERSON</code>), but it is not a guarantee.
           </li>
           <li>
-            Long documents are not windowed yet, so spans beyond the model&apos;s token limit are
-            not detected.
+            Known quirks: <code>Atlas Conseil SARL</code> is missed by NER (the organization
+            context rule covers it), <code>quartier Al Qods</code> and{" "}
+            <code>12 rue Hassan II</code> split into fragments (the address rules cover them).
           </li>
-          <li>NER is probabilistic; checksums and regex are deterministic and take priority.</li>
+          <li>
+            Long documents are windowed at 512 tokens with 64 overlap; a span exactly on a seam can
+            still split.
+          </li>
+          <li>NER is probabilistic; context, checksum and regex are deterministic and take priority.</li>
+          <li>Arabic is deferred; the supported languages are French and English.</li>
         </ul>
         <h2 id="coverage">Coverage</h2>
         <ul>
-          <li>Regex formats target US phone, ZIP and date conventions.</li>
+          <li>
+            Phone rules cover US, French and Moroccan formats; street/neighbourhood/ICE/CIN/RIB
+            context rules cover Moroccan documents.
+          </li>
           <li>PDF redaction needs a real text layer; scanned or image-only PDFs are rejected.</li>
           <li>Fake surrogates could coincidentally match unrelated text elsewhere.</li>
         </ul>
@@ -466,8 +545,7 @@ export const SECTIONS: DocSection[] = [
           <li>Redaction is one-way; nothing is stored server-side between requests.</li>
           <li>There is no authentication or rate limiting in this build.</li>
           <li>
-            Vercel serverless functions cannot host the full API because CPU PyTorch exceeds the
-            size limit; run the Docker image on a container host instead.
+            The web app and engine run as two local processes; there is no bundled installer yet.
           </li>
         </ul>
       </>

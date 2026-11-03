@@ -1,13 +1,11 @@
-import { DocsView } from "@/components/docs-view";
 import { Assistant } from "@/components/assistant";
-import { SiteHeader } from "@/components/site-header";
+import { DocsView } from "@/components/docs-view";
 
 export default function DocsPage() {
   return (
-    <>
-      <SiteHeader />
+    <div className="h-full overflow-y-auto">
       <DocsView />
       <Assistant />
-    </>
+    </div>
   );
 }

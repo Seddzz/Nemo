@@ -18,7 +18,7 @@ export function DocsView() {
   const section = SECTIONS.find((item) => item.id === activeId) ?? SECTIONS[0];
 
   return (
-    <div className="container docs-layout">
+    <div className="docs-layout docs-embed">
       <aside className="sidebar">
         <div className="sidebar-sticky">
           {GROUPS.map((group) => {
