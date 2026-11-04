@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Composer } from "@/components/composer";
+import { CipherHeadline } from "@/components/headline";
 import { useVault } from "@/lib/store";
 
 export const Route = createFileRoute("/")({ component: Home });
@@ -12,9 +13,7 @@ function Home() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-1 flex-col items-center justify-center px-6 pb-10">
-        <h1 className="text-center text-6xl font-medium tracking-[-0.045em] text-fg sm:text-7xl md:text-[5.5rem]">
-          Nemo
-        </h1>
+        <CipherHeadline className="max-w-full px-6 text-center text-5xl font-bold tracking-[-0.045em] text-fg sm:text-6xl md:text-7xl" />
         <p className="mt-5 max-w-md text-center text-sm leading-relaxed text-muted">
           Ask a question, paste a note, or point at a file. Sensitive spans are stripped before
           anything reaches your model.

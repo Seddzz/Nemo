@@ -1,9 +1,8 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import { Shell } from "@/components/shell";
-import { SoundEffects } from "@/components/ui/sound";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "Nemo";
+const APP_NAME = "Anonymization";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -14,17 +13,16 @@ export const Route = createRootRoute({
       { name: "theme-color", content: "#0c0c0a" },
       {
         name: "description",
-        content: "A local redaction layer between you and your AI model.",
+        content: "A local anonymization layer between you and your AI model.",
       },
     ],
     links: [
-      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
       { rel: "stylesheet", href: appCss },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap",
       },
     ],
   }),
@@ -34,11 +32,9 @@ export const Route = createRootRoute({
         <HeadContent />
       </head>
       <body>
-        <SoundEffects>
-          <Shell>
-            <Outlet />
-          </Shell>
-        </SoundEffects>
+        <Shell>
+          <Outlet />
+        </Shell>
         <Scripts />
       </body>
     </html>

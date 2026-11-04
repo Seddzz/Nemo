@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Bar,
   BarChart,
@@ -10,47 +10,21 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Composer } from "@/components/composer";
-import { sampleData } from "@/lib/sample-data";
 import type { Activity } from "@/lib/store";
-import { useVault } from "@/lib/store";
+import { sampleData } from "@/lib/sample-data";
+
 
 export const Route = createFileRoute("/dashboard")({ component: Dashboard });
 
-const RANGES = [
-  { id: "24h", label: "24h", days: 1 },
-  { id: "7d", label: "7d", days: 7 },
-  { id: "30d", label: "30d", days: 30 },
-  { id: "90d", label: "90d", days: 90 },
-] as const;
-
 function Dashboard() {
-  const realDocuments = useVault((s) => s.documents);
-  const realEntities = useVault((s) => s.entities);
-  const realMessages = useVault((s) => s.messagesRouted);
-  const realActivity = useVault((s) => s.activity);
-  const ledger = useVault((s) => s.ledger);
-  const useSample = useVault((s) => s.sampleData);
-  const setSampleData = useVault((s) => s.setSampleData);
-  const [range, setRange] = useState<(typeof RANGES)[number]["id"]>("30d");
-  const days = RANGES.find((r) => r.id === range)?.days ?? 30;
+  const sample = useMemo(() => sampleData(30), []);
+  const documents = sample.documents;
+  const entities = sample.entities;
+  const messagesRouted = sample.messages;
+  const activity = sample.activity;
+  const mix = sample.kinds.filter((k) => k.count > 0).sort((a, b) => b.count - a.count);
 
-  const sample = useMemo(() => sampleData(90), []);
-  const realKinds = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const h of ledger) counts.set(h.kind, (counts.get(h.kind) ?? 0) + 1);
-    return [...counts].map(([kind, count]) => ({ kind, count }));
-  }, [ledger]);
-
-  const activity = useSample ? sample.activity : realActivity;
-  const documents = useSample ? sample.documents : realDocuments;
-  const entities = useSample ? sample.entities : realEntities;
-  const messagesRouted = useSample ? sample.messages : realMessages;
-  const mix = (useSample ? sample.kinds : realKinds)
-    .filter((k) => k.count > 0)
-    .sort((a, b) => b.count - a.count);
-
-  const series = useMemo(() => bucket(activity, days), [activity, days]);
+  const series = useMemo(() => bucket(activity, 30), [activity]);
   const peak = series.reduce((best, row) => (row.entities > best.entities ? row : best), series[0]);
   const kinds = mix.length;
   const recent = activity.slice(0, 8);
@@ -58,72 +32,21 @@ function Dashboard() {
   const docDelta = delta(series.map((s) => s.documents));
   const msgDelta = delta(series.map((s) => s.messages));
 
-  const from = series[0]?.label ?? "";
-  const to = series[series.length - 1]?.axis ?? "";
+  const summary =
+    `Across the last 30 days, ${documents} documents and ${messagesRouted} messages were anonymized, ` +
+    `masking ${entities.toLocaleString()} sensitive spans across ${kinds} entity types. ` +
+    `${peak && peak.entities > 0 ? `Peak activity reached ${peak.entities.toLocaleString()} entities on ${peak.full}.` : "No activity yet."}`;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-5xl px-6 py-8 md:px-10">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <p className="text-[11px] tracking-[0.16em] text-faint uppercase">
-              Overview · {from} – {to}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={useSample}
-                onClick={() => setSampleData(!useSample)}
-                className="inline-flex items-center gap-2 rounded-full border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"
-              >
-                <span
-                  className={`relative inline-block h-3.5 w-6 rounded-full transition-colors ${useSample ? "bg-lime" : "bg-line"}`}
-                >
-                  <span
-                    className={`absolute top-0.5 size-2.5 rounded-full bg-bg transition-transform ${useSample ? "translate-x-3" : "translate-x-0.5"}`}
-                  />
-                </span>
-                Sample data
-              </button>
-              <div className="flex gap-1 rounded-full bg-raised p-1">
-                {RANGES.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setRange(item.id)}
-                    className={`rounded-full px-3 py-1 text-[12px] ${
-                      range === item.id ? "bg-lime text-ink" : "text-muted"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          {useSample && (
-            <p className="mt-3 text-[12px] text-faint">
-              Showing synthetic usage so you can see the full dashboard. Turn off Sample data to see
-              your own.
-            </p>
-          )}
-
-          <h1 className="rise mt-4 text-4xl tracking-tight md:text-5xl">
-            Nothing leaves <span className="font-semibold">unmasked</span>.
-          </h1>
-          <p
-            className="rise mt-3 max-w-xl text-sm leading-relaxed text-muted"
-            style={{ animationDelay: "80ms" }}
-          >
-            {documents.toLocaleString()} documents and {messagesRouted.toLocaleString()} chat
-            messages passed through Nemo. Every one was anonymized on this device before it
-            reached your model.
+          <p className="text-sm leading-relaxed text-muted">
+            {summary}
           </p>
-
-          <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Kpi
-              label="Entities redacted"
+              label="Entities anonymized"
               value={entities.toLocaleString()}
               note={`across ${kinds} entity types`}
               delta={entityDelta}
@@ -158,11 +81,11 @@ function Dashboard() {
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-sm font-medium">Entities redacted per day</h2>
+                <h2 className="text-sm font-medium">Entities anonymized per day</h2>
                 <p className="mt-1 text-[13px] text-muted">
                   {peak && peak.entities > 0
                     ? `Peak of ${peak.entities.toLocaleString()} on ${peak.full}`
-                    : "No redactions in this range yet"}
+                    : "No anonymizations in this range yet"}
                 </p>
               </div>
               <div className="flex items-center gap-4 text-[11px] text-faint">
@@ -214,7 +137,7 @@ function Dashboard() {
                     animationDuration={700}
                   >
                     {series.map((row) => (
-                      <Cell key={row.key} fill={row.today ? "#c6f54a" : "#3a3a3a"} />
+                      <Cell key={row.key} fill={row.today ? "#c8ff00" : "#3a3a3a"} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -228,9 +151,9 @@ function Dashboard() {
               style={{ animationDelay: "200ms" }}
             >
               <h2 className="text-sm font-medium">Entity mix</h2>
-              <p className="mt-1 text-[13px] text-muted">What was redacted, by type</p>
+              <p className="mt-1 text-[13px] text-muted">What was anonymized, by type</p>
               {mix.length === 0 ? (
-                <p className="mt-6 text-[13px] text-faint">Nothing redacted yet.</p>
+                <p className="mt-6 text-[13px] text-faint">Nothing anonymized yet.</p>
               ) : (
                 <ul className="mt-4 space-y-3">
                   {mix.map((k) => {
@@ -262,7 +185,7 @@ function Dashboard() {
               <p className="mt-1 text-[13px] text-muted">Latest chats and documents</p>
               {recent.length === 0 ? (
                 <p className="mt-6 text-[13px] text-faint">
-                  No activity yet. Send a chat or redact a file.
+                  No activity yet. Send a chat or anonymize a file.
                 </p>
               ) : (
                 <ul className="mt-3 divide-y divide-line">
@@ -292,9 +215,6 @@ function Dashboard() {
             </section>
           </div>
         </div>
-      </div>
-      <div className="mx-auto w-full max-w-3xl px-4 pb-5">
-        <Composer />
       </div>
     </div>
   );

@@ -2,11 +2,19 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { PROVIDERS, providerInfo, type Provider } from "@/lib/models";
-import { useVault, type KeySettings } from "@/lib/store";
+import { NAV_META, NAV_ORDER_DEFAULT, orderedNav, type NavKey } from "@/lib/nav";
+import { prettyShortcut, shortcutFromEvent } from "@/lib/shortcuts";
+import { useVault, type AnonymizeScope, type KeySettings } from "@/lib/store";
 
 export const Route = createFileRoute("/settings")({ component: KeyPage });
 
 const CUSTOM = "__custom__";
+
+const SCOPES: { id: AnonymizeScope; label: string; note: string }[] = [
+  { id: "both", label: "Prompt and files", note: "Anonymize the message and any attached text." },
+  { id: "file", label: "Files only", note: "Leave the prompt as written, mask attached text." },
+  { id: "text", label: "Prompt only", note: "Mask the prompt, leave attached text as written." },
+];
 
 function KeyPage() {
   const saved = useVault(
@@ -16,9 +24,13 @@ function KeyPage() {
       model: s.model,
       baseUrl: s.baseUrl,
       restoreReplies: s.restoreReplies,
+      anonymizeScope: s.anonymizeScope,
+      anonymizeShortcut: s.anonymizeShortcut,
     })),
   );
   const saveKey = useVault((s) => s.saveKey);
+  const navOrder = useVault((s) => s.navOrder);
+  const setNavOrder = useVault((s) => s.setNavOrder);
 
   // Edits stay local until Save; the persisted settings only change on submit.
   const [draft, setDraft] = useState<KeySettings>(saved);
@@ -26,6 +38,7 @@ function KeyPage() {
   const [customModel, setCustomModel] = useState(
     () => !providerInfo(saved.provider).models.includes(saved.model),
   );
+  const [recording, setRecording] = useState(false);
 
   // The store rehydrates from localStorage after the first render; pick that up once.
   const hydrated = useVault.persist?.hasHydrated?.() ?? true;
@@ -37,6 +50,8 @@ function KeyPage() {
       model: current.model,
       baseUrl: current.baseUrl,
       restoreReplies: current.restoreReplies,
+      anonymizeScope: current.anonymizeScope,
+      anonymizeShortcut: current.anonymizeShortcut,
     };
     setDraft(next);
     setCustomModel(!providerInfo(next.provider).models.includes(next.model));
@@ -55,6 +70,27 @@ function KeyPage() {
     setStatus("idle");
   };
 
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        setRecording(false);
+        return;
+      }
+      const hasModifier = event.ctrlKey || event.metaKey || event.altKey || /^F\d{1,2}$/.test(event.key);
+      if (!hasModifier) return;
+      const value = shortcutFromEvent(event);
+      if (!value) return;
+      setDraft((d) => ({ ...d, anonymizeShortcut: value }));
+      setStatus("idle");
+      setRecording(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [recording]);
+
   function pickProvider(id: Provider) {
     const next = providerInfo(id);
     update({ provider: id, model: next.models[0] ?? "", baseUrl: next.baseUrl });
@@ -68,14 +104,22 @@ function KeyPage() {
     setStatus("saved");
   }
 
+  function moveNav(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= navOrder.length) return;
+    const next = [...navOrder];
+    [next[index], next[target]] = [next[target], next[index]];
+    setNavOrder(next);
+  }
+
   return (
     <div className="h-full overflow-y-auto">
       <form onSubmit={save} className="mx-auto max-w-3xl px-6 py-12 md:px-10 md:py-16">
-        <p className="text-[11px] text-faint">Key</p>
+        <p className="text-[11px] text-faint">Settings</p>
         <h1 className="mt-2 text-2xl text-fg">Bring the model you already use</h1>
         <p className="mt-4 text-sm leading-relaxed text-muted">
           The credential stays in this browser. It is sent only when you press Send, and only with
-          the redacted transcript.
+          the anonymized transcript.
         </p>
 
         <fieldset className="mt-10">
@@ -180,11 +224,103 @@ function KeyPage() {
           </span>
         </label>
 
+        <fieldset className="mt-10">
+          <legend className="text-xs tracking-wide text-faint uppercase">Anonymization</legend>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {SCOPES.map((scope) => (
+              <button
+                key={scope.id}
+                type="button"
+                aria-pressed={draft.anonymizeScope === scope.id}
+                onClick={() => update({ anonymizeScope: scope.id })}
+                className={`rounded-lg border px-4 py-3 text-left ${
+                  draft.anonymizeScope === scope.id
+                    ? "border-lime bg-raised"
+                    : "border-line hover:bg-raised"
+                }`}
+              >
+                <span className="block text-sm font-bold">{scope.label}</span>
+                <span className="mt-1 block text-xs leading-relaxed text-muted">{scope.note}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <span className="text-xs tracking-wide text-faint uppercase">Toggle shortcut</span>
+            <button
+              type="button"
+              onClick={() => setRecording((on) => !on)}
+              className={`min-w-40 rounded-lg border px-4 py-2 text-sm font-bold transition-colors ${
+                recording ? "border-lime bg-lime text-ink" : "border-line bg-surface hover:bg-raised"
+              }`}
+            >
+              {recording ? "Press keys…" : prettyShortcut(draft.anonymizeShortcut)}
+            </button>
+            <button
+              type="button"
+              onClick={() => update({ anonymizeShortcut: "Ctrl+H" })}
+              className="text-xs text-muted hover:text-fg"
+            >
+              Reset to Ctrl + H
+            </button>
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-muted">
+            Hold Ctrl, Alt or Meta while pressing a key. Press the shortcut in the prompt bar to
+            switch anonymization for the next message.
+          </p>
+        </fieldset>
+
+        <fieldset className="mt-10">
+          <legend className="text-xs tracking-wide text-faint uppercase">Sidebar</legend>
+          <p className="mt-2 text-xs leading-relaxed text-muted">
+            Choose the order of the sidebar. Documentation sits last by default and Account is
+            always pinned to the bottom.
+          </p>
+          <div className="mt-3 overflow-hidden rounded-lg border border-line">
+            {orderedNav(navOrder).map((key: NavKey, index) => (
+              <div
+                key={key}
+                className={`flex items-center gap-3 px-4 py-2.5 ${
+                  index > 0 ? "border-t border-line" : ""
+                }`}
+              >
+                <span className="flex-1 text-sm font-bold">{NAV_META[key].label}</span>
+                <button
+                  type="button"
+                  onClick={() => moveNav(index, -1)}
+                  disabled={index === 0}
+                  aria-label={`Move ${NAV_META[key].label} up`}
+                  className="rounded-md border border-line px-2 py-1 text-xs text-muted hover:text-fg disabled:opacity-30"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveNav(index, 1)}
+                  disabled={index === navOrder.length - 1}
+                  aria-label={`Move ${NAV_META[key].label} down`}
+                  className="rounded-md border border-line px-2 py-1 text-xs text-muted hover:text-fg disabled:opacity-30"
+                >
+                  ↓
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setNavOrder([...NAV_ORDER_DEFAULT])}
+            className="mt-3 text-xs text-muted hover:text-fg"
+          >
+            Reset sidebar order
+          </button>
+        </fieldset>
+
         <div className="mt-10 flex items-center gap-3 border-t border-line pt-6">
           <button
             type="submit"
             disabled={!dirty || !draft.model.trim()}
-            className="rounded-lg bg-fg px-5 py-2.5 text-sm font-medium text-bg disabled:opacity-40"
+            className="rounded-lg bg-lime px-5 py-2.5 text-sm font-bold text-ink disabled:opacity-40"
           >
             Save
           </button>

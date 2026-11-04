@@ -14,7 +14,8 @@
   --color-muted-foreground: #8d8d8d;
   --color-faint: #5a5a5a;
   --color-brass: #f4f4f4;
-  --color-lime: #c6f54a;
+  --color-lime: #c8ff00;
+  --color-secondary: #c8ff00;
   --color-send: #101910;
   --color-ink: #101910;
   --color-danger: #e06a5c;
@@ -35,7 +36,7 @@
 
   /* Whole-app scale. Viewport-height layouts divide by it (see .h-app) so they still fit. */
   :root {
-    --ui-zoom: 1.25;
+    --ui-zoom: 1;
   }
 
   html {
@@ -75,12 +76,55 @@
   animation: rise 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
+.nav-icon {
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 240ms ease;
+}
+
+.nice-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #343434 transparent;
+}
+
+.nice-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.nice-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.nice-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #343434;
+}
+
+.nice-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--color-lime);
+}
+
+.group:hover .nav-icon {
+  transform: translateY(-1px) scale(1.14) rotate(-5deg);
+}
+
+.group:active .nav-icon {
+  transform: scale(0.94);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rise {
     animation: none;
   }
   .sound-slash, .sound-wave, .sound-speaker {
     transition: none;
+  }
+  .nav-icon,
+  .group:hover .nav-icon,
+  .group:active .nav-icon {
+    transition: none;
+    transform: none;
   }
 }
 
@@ -99,10 +143,8 @@
 
 :root {
   --ring-duration: 150ms;
-  --blue: #0a7cff;
-  --blue-foreground: #ffffff;
-  --bubble-sent: var(--blue);
-  --bubble-sent-foreground: var(--blue-foreground);
+  --bubble-sent: #c8ff00;
+  --bubble-sent-foreground: #101910;
   --bubble-received: #e9e9eb;
   --bubble-received-foreground: #000000;
 }

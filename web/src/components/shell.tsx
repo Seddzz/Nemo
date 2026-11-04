@@ -1,29 +1,34 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  MarkAccount,
   MarkBoard,
   MarkFile,
   MarkKey,
+  MarkLogo,
+  MarkMoney,
   MarkNotes,
   MarkPencil,
   MarkPlus,
   MarkSearch,
-  MarkSidebar,
+  MarkSidebarOpen,
   MarkTrash,
 } from "@/components/marks";
+import { NAV_META, orderedNav, type NavKey } from "@/lib/nav";
 import { useVault } from "@/lib/store";
 
-const NAV = [
-  { to: "/dashboard", label: "Dashboard", icon: MarkBoard },
-  { to: "/anonymize", label: "Redact", icon: MarkFile },
-  { to: "/docs", label: "Notes", icon: MarkNotes },
-  { to: "/settings", label: "Key", icon: MarkKey },
-] as const;
+const NAV_ICONS: Record<NavKey, typeof MarkBoard> = {
+  dashboard: MarkBoard,
+  anonymize: MarkFile,
+  docs: MarkNotes,
+  settings: MarkKey,
+};
 
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 440;
 const SIDEBAR_DEFAULT = 248;
-const SIDEBAR_KEY = "nemo-sidebar";
+const SIDEBAR_KEY = "relay-sidebar";
 
 // Per-viewer layout preference. Read after mount so the server render and the
 // first client render match; storage can be unavailable, so every access is guarded.
@@ -78,10 +83,24 @@ export function Shell({ children }: { children: ReactNode }) {
   const activeId = useVault((s) => s.activeId);
   const newThread = useVault((s) => s.newThread);
   const selectThread = useVault((s) => s.selectThread);
+  const navOrder = useVault((s) => s.navOrder);
+  const setNavOrder = useVault((s) => s.setNavOrder);
   const navigate = useNavigate();
+
+  function moveNav(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= nav.length) return;
+    const next = [...nav];
+    [next[index], next[target]] = [next[target], next[index]];
+    setNavOrder(next);
+  }
   const [query, setQuery] = useState("");
+  const [customizing, setCustomizing] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const { open, setOpen, width, setWidth } = useSidebar();
   const [dragging, setDragging] = useState(false);
+  const reduceMotion = useReducedMotion() ?? false;
+  const nav = orderedNav(navOrder);
 
   // Ctrl+B / Cmd+B toggles the sidebar, like most editors.
   useEffect(() => {
@@ -122,7 +141,7 @@ export function Shell({ children }: { children: ReactNode }) {
   }, [threads, query]);
 
   return (
-    <div className={`flex h-app bg-bg text-fg ${dragging ? "cursor-col-resize select-none" : ""}`}>
+    <div className={`flex h-app bg-surface text-fg ${dragging ? "cursor-col-resize select-none" : ""}`}>
       <aside
         id="app-sidebar"
         aria-label="Sidebar"
@@ -131,67 +150,117 @@ export function Shell({ children }: { children: ReactNode }) {
           open ? "border-r border-line" : ""
         } ${dragging ? "" : "transition-[width] duration-200 ease-out motion-reduce:transition-none"}`}
       >
-        <div className="flex h-full flex-col" style={{ width, minWidth: width }} inert={!open}>
-          <div className="flex items-center justify-between px-3 pt-3 pb-1">
-            <span className="px-1 text-[13px] font-medium tracking-tight">Nemo</span>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              aria-label="Collapse sidebar"
-              aria-controls="app-sidebar"
-              aria-expanded={open}
-              title="Collapse sidebar (Ctrl+B)"
-              className="rounded-md p-1.5 text-muted hover:bg-raised hover:text-fg"
-            >
-              <MarkSidebar className="size-4" />
-            </button>
+{open ? (
+        <div className="flex h-full flex-col" style={{ width: open ? width : 64, minWidth: open ? width : 64 }}>
+          <div className="flex items-center justify-between px-3 pt-3 pb-2">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-raised text-lime">
+              <MarkLogo className="size-4" />
+            </span>
           </div>
-          <div className="flex flex-col gap-0.5 px-2 pt-1">
+          <div className="flex flex-col gap-0.5 px-2">
+            <div className="px-3 pt-2 pb-1 text-[10px] font-bold tracking-[0.14em] text-faint uppercase">
+              Workspace
+            </div>
+            <div className="flex items-center gap-2 px-2 py-1">
+              <button
+                type="button"
+                onClick={() => setCustomizing((v) => !v)}
+                className={`text-[11px] font-bold ${customizing ? "text-lime" : "text-muted hover:text-fg"}`}
+              >
+                {customizing ? "Editing…" : "Customize"}
+              </button>
+              {customizing && (
+                <button
+                  type="button"
+                  onClick={() => setCustomizing(false)}
+                  className="text-[11px] font-bold text-muted hover:text-fg"
+                >
+                  Save
+                </button>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => {
                 newThread();
                 void navigate({ to: "/chat" });
               }}
-              className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] text-fg hover:bg-raised"
+              className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] font-bold text-fg hover:bg-raised/60"
             >
-              <MarkPlus className="size-4 text-muted" />
+              <MarkPlus className="nav-icon size-4 text-muted" />
               New session
             </button>
-            {NAV.map((item) => {
+            <label className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-muted transition-colors hover:bg-raised/60 focus-within:text-fg">
+              <MarkSearch className="size-4 shrink-0" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search"
+                className="w-full bg-transparent text-[13px] font-bold text-fg outline-none placeholder:text-muted"
+              />
+            </label>
+            {nav.map((key, index) => {
+              const item = NAV_META[key];
+              const Icon = NAV_ICONS[key];
               const active = path.startsWith(item.to);
-              const Icon = item.icon;
               return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] ${
-                    active ? "bg-raised text-fg" : "text-muted hover:bg-raised hover:text-fg"
-                  }`}
+                <div
+                  key={key}
+                  draggable={customizing}
+                  onDragStart={() => setDragIndex(index)}
+                  onDragOver={(e) => {
+                    if (!customizing) return;
+                    e.preventDefault();
+                    if (dragIndex === null || dragIndex === index) return;
+                    const next = [...nav];
+                    const [moved] = next.splice(dragIndex, 1);
+                    next.splice(index, 0, moved);
+                    setNavOrder(next);
+                    setDragIndex(index);
+                  }}
+                  onDragEnd={() => setDragIndex(null)}
+                  className={`flex items-center gap-1 ${customizing ? "cursor-grab active:cursor-grabbing" : ""} ${dragIndex === index ? "opacity-50" : ""}`}
                 >
-                  <Icon className="size-4" />
-                  {item.label}
-                </Link>
+                  <Link
+                    to={item.to}
+                    className={`group flex flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] font-bold outline-none transition-colors ${
+                      active
+                        ? "text-fg"
+                        : "text-muted hover:bg-raised/60 hover:text-fg"
+                    }`}
+                  >
+                    <Icon className={`nav-icon size-4 ${active ? "text-lime" : ""}`} />
+                    <span>{item.label}</span>
+                  </Link>
+                  {customizing && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => moveNav(index, -1)}
+                        disabled={index === 0}
+                        className="rounded px-1.5 py-1 text-[11px] text-muted hover:text-fg disabled:opacity-30"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveNav(index, 1)}
+                        disabled={index === nav.length - 1}
+                        className="rounded px-1.5 py-1 text-[11px] text-muted hover:text-fg disabled:opacity-30"
+                      >
+                        ↓
+                      </button>
+                    </>
+                  )}
+                </div>
               );
             })}
           </div>
 
-          <div className="px-3 pt-3">
-            <label className="flex items-center gap-2 rounded-md px-2 py-1.5 text-muted">
-              <MarkSearch className="size-3.5" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search sessions…"
-                className="w-full bg-transparent text-[13px] text-fg outline-none placeholder:text-faint"
-              />
-            </label>
+          <div className="mt-5 px-3 text-[10px] font-bold tracking-[0.14em] text-faint uppercase">
+            Recents {visible.length}
           </div>
-
-          <div className="mt-4 px-4 text-[11px] tracking-[0.14em] text-faint">
-            SESSIONS {visible.length}
-          </div>
-          <div className="mt-1 min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+          <div className="nice-scroll mt-1 min-h-0 flex-1 overflow-y-auto px-2 pb-4">
             {visible.map((t) => (
               <ThreadRow
                 key={t.id}
@@ -206,10 +275,64 @@ export function Shell({ children }: { children: ReactNode }) {
               />
             ))}
             {visible.length === 0 && (
-              <p className="px-2 py-1.5 text-[12px] text-faint">No sessions match “{query}”.</p>
+              <p className="px-2 py-1.5 text-[12px] text-faint">
+                {query.trim() ? "No sessions match." : "No conversations yet."}
+              </p>
             )}
           </div>
+
+          <div className="mt-auto px-3 pb-3">
+            <button
+              type="button"
+              onClick={() => window.open("https://buy.stripe.com/test_checkout", "_blank", "noopener,noreferrer")}
+              title="Upgrade via Stripe"
+              className="mb-2 group flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-[13px] font-bold text-muted transition-colors hover:bg-raised/60 hover:text-fg"
+            >
+              <MarkMoney className="nav-icon size-4" />
+              <span className="flex-1 text-left">Get full access</span>
+            </button>
+            <Link
+              to="/settings"
+              className="group flex items-center gap-2.5 rounded-md px-2 py-2 text-[13px] font-bold text-muted transition-colors hover:bg-raised/60 hover:text-fg"
+            >
+              <MarkAccount className="nav-icon size-4" />
+              <span className="flex-1">Account</span>
+              <span className="text-[11px] font-semibold text-faint">Free</span>
+            </Link>
+          </div>
         </div>
+        ) : (
+          <div className="flex h-full flex-col items-center gap-3 py-3">
+            {nav.map((key) => {
+              const Icon = NAV_ICONS[key];
+              const item = NAV_META[key];
+              const active = path.startsWith(item.to);
+              return (
+                <Link
+                  key={key}
+                  to={item.to}
+                  title={item.label}
+                  className={`rounded-md p-2 transition-colors ${active ? "text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"}`}
+                >
+                  <Icon className={`nav-icon size-5 ${active ? "text-lime" : ""}`} />
+                </Link>
+              );
+            })}
+            <div className="mt-auto flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={() => window.open("https://buy.stripe.com/test_checkout", "_blank", "noopener,noreferrer")}
+                title="Get full access"
+                className="rounded-md p-2 text-muted hover:bg-raised/60 hover:text-fg"
+              >
+                <MarkMoney className="nav-icon size-5" />
+              </button>
+              <Link to="/settings" title="Account" className="rounded-md p-2 text-muted hover:bg-raised/60 hover:text-fg">
+                <MarkAccount className="nav-icon size-5" />
+              </Link>
+            </div>
+          </div>
+        )}
         {open && (
           <div
             role="separator"
@@ -234,19 +357,6 @@ export function Shell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col">
-        {!open && (
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            aria-label="Expand sidebar"
-            aria-controls="app-sidebar"
-            aria-expanded={open}
-            title="Expand sidebar (Ctrl+B)"
-            className="absolute top-2.5 left-2.5 z-20 hidden rounded-md p-1.5 text-muted hover:bg-raised hover:text-fg md:block"
-          >
-            <MarkSidebar className="size-4" />
-          </button>
-        )}
         <header className="flex items-center gap-2 overflow-x-auto border-b border-line px-3 py-2 md:hidden">
           <button
             type="button"
@@ -254,22 +364,30 @@ export function Shell({ children }: { children: ReactNode }) {
               newThread();
               void navigate({ to: "/chat" });
             }}
-            className="shrink-0 rounded-md px-2 py-1.5 text-sm text-fg"
+            className="shrink-0 rounded-md px-2 py-1.5 text-sm font-bold text-fg"
           >
             New
           </button>
-          {NAV.map((item) => (
+          {nav.map((key) => (
             <Link
-              key={item.to}
-              to={item.to}
-              className="shrink-0 rounded-md px-2 py-1.5 text-sm text-muted"
+              key={key}
+              to={NAV_META[key].to}
+              className="shrink-0 rounded-md px-2 py-1.5 text-sm font-bold text-muted"
             >
-              {item.label}
+              {NAV_META[key].label}
             </Link>
           ))}
         </header>
         <main className={`min-h-0 flex-1 overflow-hidden ${open ? "" : "md:pl-11"}`}>
-          {children}
+          <motion.div
+            key={path}
+            initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+            className="h-full"
+          >
+            {children}
+          </motion.div>
         </main>
       </div>
     </div>
@@ -299,7 +417,9 @@ function ThreadRow({
     if (mode === "rename") input.current?.select();
   }, [mode]);
 
-  const tone = active ? "bg-raised text-fg" : "text-muted hover:bg-raised/80 hover:text-fg";
+  const tone = active
+    ? "bg-raised text-fg"
+    : "text-muted hover:bg-raised/80 hover:text-fg";
 
   if (mode === "rename") {
     const commit = () => {
@@ -357,7 +477,9 @@ function ThreadRow({
   }
 
   return (
-    <div className={`group flex items-center rounded-md text-[13px] ${tone}`}>
+    <div
+      className={`group flex items-center rounded-md text-[13px] font-bold transition-colors ${tone}`}
+    >
       <button
         type="button"
         onClick={onOpen}
@@ -386,7 +508,7 @@ function ThreadRow({
           }}
           className="rounded p-1 text-faint hover:bg-bg hover:text-fg"
         >
-          <MarkPencil className="size-3.5" />
+          <MarkPencil className="nav-icon size-3.5" />
         </button>
         <button
           type="button"
@@ -395,7 +517,7 @@ function ThreadRow({
           onClick={() => setMode("confirm")}
           className="rounded p-1 text-faint hover:bg-bg hover:text-danger"
         >
-          <MarkTrash className="size-3.5" />
+          <MarkTrash className="nav-icon size-3.5" />
         </button>
       </div>
     </div>

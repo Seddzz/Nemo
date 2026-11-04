@@ -2,65 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
 import { MarkUpload } from "@/components/marks";
 import { SAMPLE, anonymize } from "@/lib/anonymize";
+import { ACCEPT, formatSize, readable } from "@/lib/files";
 import { useVault } from "@/lib/store";
 
-export const Route = createFileRoute("/anonymize")({ component: Redact });
+export const Route = createFileRoute("/anonymize")({ component: Anonymize });
 
-// Files are read as text in the browser; nothing is uploaded anywhere.
-const TEXT_EXTENSIONS = [
-  "txt",
-  "md",
-  "csv",
-  "tsv",
-  "json",
-  "log",
-  "xml",
-  "html",
-  "htm",
-  "yaml",
-  "yml",
-  "eml",
-  "rtf",
-];
-const BINARY_EXTENSIONS = [
-  "pdf",
-  "doc",
-  "docx",
-  "xls",
-  "xlsx",
-  "ppt",
-  "pptx",
-  "zip",
-  "png",
-  "jpg",
-  "jpeg",
-];
-const ACCEPT = TEXT_EXTENSIONS.map((e) => "." + e).join(",") + ",text/*,application/json";
-const MAX_BYTES = 2 * 1024 * 1024;
-
-function readable(file: File): string | null {
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (BINARY_EXTENSIONS.includes(ext)) {
-    return `.${ext} files aren't supported yet. Save it as .txt or paste the text instead.`;
-  }
-  if (
-    !TEXT_EXTENSIONS.includes(ext) &&
-    !file.type.startsWith("text/") &&
-    file.type !== "application/json"
-  ) {
-    return "That doesn't look like a text file. Try .txt, .md, .csv or .json.";
-  }
-  if (file.size > MAX_BYTES) return `That file is ${size(file.size)}. The limit is 2 MB.`;
-  return null;
-}
-
-function size(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function Redact() {
+function Anonymize() {
   const [source, setSource] = useState("");
   const [fileName, setFileName] = useState("");
   const [fileSize, setFileSize] = useState(0);
@@ -123,7 +70,7 @@ function Redact() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = (fileName || "redacted").replace(/\.\w+$/, "") + ".redacted.txt";
+    a.download = (fileName || "anonymized").replace(/\.\w+$/, "") + ".anonymized.txt";
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -132,7 +79,7 @@ function Redact() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line px-6 py-4 md:px-10">
         <div>
-          <div className="text-[11px] text-faint">Redact</div>
+          <div className="text-[11px] text-faint">Anonymize</div>
           <h1 className="text-sm text-fg">Source and the copy that would leave</h1>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -168,7 +115,7 @@ function Redact() {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 auto-rows-max overflow-y-auto lg:auto-rows-auto lg:grid-cols-[1fr_1fr_16rem] lg:overflow-hidden">
+      <div className="grid min-h-0 flex-1 auto-rows-max overflow-y-auto lg:auto-rows-auto lg:grid-cols-[1fr_1fr] lg:overflow-hidden">
         <section
           className="relative flex flex-col lg:min-h-0 border-b border-line lg:border-r lg:border-b-0"
           onDragEnter={(e) => {
@@ -218,7 +165,7 @@ function Redact() {
             <div className="mx-6 mb-3 flex items-center gap-2 self-start rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12px]">
               <MarkUpload className="size-3.5 text-muted" />
               <span className="max-w-[16rem] truncate text-fg">{fileName}</span>
-              {fileSize > 0 && <span className="text-faint">{size(fileSize)}</span>}
+              {fileSize > 0 && <span className="text-faint">{formatSize(fileSize)}</span>}
             </div>
           )}
           {fileError && (
@@ -290,33 +237,13 @@ function Redact() {
             </button>
           </div>
           <pre className="min-h-64 flex-1 overflow-auto px-6 pb-6 font-sans text-sm leading-relaxed whitespace-pre-wrap text-fg">
-            {source ? result.text : "The redacted copy appears here."}
+            {source ? result.text : "The anonymized copy appears here."}
           </pre>
         </section>
 
-        <aside className="lg:min-h-0 lg:overflow-y-auto bg-surface px-5 py-4">
-          <div className="text-xs tracking-wide text-faint uppercase">Held locally</div>
-          <div className="mt-2 text-3xl text-fg">{localHits.length}</div>
-          <p className="mt-1 text-xs text-muted">spans in this draft</p>
-          <ul className="mt-6 space-y-3">
-            {dedupe(localHits).map((h) => (
-              <li key={h.token} className="border-t border-line pt-3">
-                <div className="text-[11px] text-muted">{h.kind}</div>
-                <div className="mt-1 text-sm">{h.value}</div>
-                <div className="mt-0.5 font-mono text-xs text-faint">{h.token}</div>
-              </li>
-            ))}
-            {localHits.length === 0 && (
-              <li className="text-sm text-muted">No entities detected yet.</li>
-            )}
-          </ul>
-        </aside>
+
       </div>
     </div>
   );
 }
 
-function dedupe<T extends { token: string }>(hits: T[]) {
-  const seen = new Set<string>();
-  return hits.filter((h) => (seen.has(h.token) ? false : (seen.add(h.token), true)));
-}

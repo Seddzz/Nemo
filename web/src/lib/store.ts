@@ -2,8 +2,11 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Hit } from "@/lib/anonymize";
 import { providerInfo, type Provider } from "@/lib/models";
+import { NAV_ORDER_DEFAULT, type NavKey } from "@/lib/nav";
 
 export type { Provider } from "@/lib/models";
+
+export type AnonymizeScope = "both" | "file" | "text";
 
 export type KeySettings = {
   provider: Provider;
@@ -11,6 +14,23 @@ export type KeySettings = {
   model: string;
   baseUrl: string;
   restoreReplies: boolean;
+  anonymizeScope: AnonymizeScope;
+  anonymizeShortcut: string;
+};
+
+export type Attachment = {
+  id: string;
+  name: string;
+  size: number;
+  text: string;
+};
+
+export type ChatAttachment = {
+  name: string;
+  size: number;
+  content: string;
+  masked?: string;
+  hits?: Hit[];
 };
 
 export type ChatMessage = {
@@ -19,6 +39,7 @@ export type ChatMessage = {
   content: string;
   masked?: string;
   hits?: Hit[];
+  attachments?: ChatAttachment[];
   held?: boolean;
   at?: number;
 };
@@ -44,6 +65,9 @@ type State = {
   model: string;
   baseUrl: string;
   restoreReplies: boolean;
+  anonymizeScope: AnonymizeScope;
+  anonymizeShortcut: string;
+  navOrder: NavKey[];
   strict: boolean;
   threads: Thread[];
   activeId: string;
@@ -62,6 +86,9 @@ type State = {
   setModel: (m: string) => void;
   setBaseUrl: (u: string) => void;
   setRestoreReplies: (v: boolean) => void;
+  setAnonymizeScope: (v: AnonymizeScope) => void;
+  setAnonymizeShortcut: (v: string) => void;
+  setNavOrder: (v: NavKey[]) => void;
   setStrict: (v: boolean) => void;
   newThread: () => void;
   selectThread: (id: string) => void;
@@ -93,6 +120,9 @@ export const useVault = create<State>()(
       model: "gpt-4o-mini",
       baseUrl: "https://api.openai.com/v1",
       restoreReplies: true,
+      anonymizeScope: "both",
+      anonymizeShortcut: "Ctrl+H",
+      navOrder: NAV_ORDER_DEFAULT,
       strict: true,
       threads: [first],
       activeId: first.id,
@@ -112,8 +142,7 @@ export const useVault = create<State>()(
         set((s) => {
           const rest = s.threads.filter((t) => t.id !== id);
           if (rest.length === 0) {
-            const t = blankThread();
-            return { threads: [t], activeId: t.id };
+            return { threads: [], activeId: "" };
           }
           return { threads: rest, activeId: s.activeId === id ? rest[0].id : s.activeId };
         }),
@@ -126,6 +155,9 @@ export const useVault = create<State>()(
       setModel: (model) => set({ model }),
       setBaseUrl: (baseUrl) => set({ baseUrl }),
       setRestoreReplies: (restoreReplies) => set({ restoreReplies }),
+      setAnonymizeScope: (anonymizeScope) => set({ anonymizeScope }),
+      setAnonymizeShortcut: (anonymizeShortcut) => set({ anonymizeShortcut }),
+      setNavOrder: (navOrder) => set({ navOrder }),
       setStrict: (strict) => set({ strict }),
       newThread: () =>
         set((s) => {
@@ -137,9 +169,10 @@ export const useVault = create<State>()(
         set((s) => ({
           threads: s.threads.map((t) => {
             if (t.id !== threadId) return t;
+            const seed = message.content.trim() || message.attachments?.[0]?.name || "";
             const title =
               t.messages.length === 0 && message.role === "user"
-                ? message.content.replace(/\s+/g, " ").slice(0, 42)
+                ? seed.replace(/\s+/g, " ").slice(0, 42)
                 : t.title;
             return {
               ...t,
