@@ -17,6 +17,7 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "python-multipart",
+    "typer",
     "faker",
 ]
 
@@ -27,6 +28,10 @@ dev = [
     "hypothesis",
     "httpx",
 ]
+
+[project.scripts]
+anon = "anonymizer.cli:app"
+nemo = "anonymizer.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -40,6 +45,7 @@ extend-exclude = [".hf-cache"]
 select = ["E", "F", "I", "UP", "B", "C4", "SIM", "T20"]
 
 [tool.ruff.lint.per-file-ignores]
+"src/anonymizer/cli.py" = ["T201"]
 "eval/*" = ["T201"]
 
 [tool.ruff.lint.isort]
