@@ -1,12 +1,11 @@
 # Deployment
 
 Nemo is local-first: the engine runs on your machine (Python, the CLI console, or
-Docker), while the Next.js docs site — documentation and the Groq-backed assistant —
-deploys to Vercel. The site never sends text to the engine and never sees your
-documents.
+Docker), while the web app deploys to Vercel. The web app redacts text in the
+browser before anything is sent, and never talks to the engine.
 
 ```
-Browser ──► Next.js on Vercel ──► /api/chat ──► Groq
+Browser (redacts locally) ──► web app on Vercel ──► your model provider
 Terminal ──► CLI console ──► detection engine (local)
 ```
 
@@ -29,22 +28,18 @@ If you self-host the API on a container platform (Render, Railway, Fly.io, Huggi
 Face Spaces), the NER model (`dslim/bert-base-NER`) downloads on first use, so give
 the container about 2 GB of memory.
 
-## 2. Frontend (Vercel)
+## 2. Web app (Vercel)
 
 Import the repository into Vercel and set the **root directory** to `web`.
 
-`web/vercel.json` sets the build command to `npm run index && npm run build`, so the
-RAG index is regenerated from `web/lib/rag-corpus.json` on every deploy. The committed
-`web/lib/embeddings.json` is a fallback if indexing is skipped.
+The app is TanStack Start on Vite. `npm run build` uses Nitro's Vercel preset to write
+`.vercel/output`, which Vercel deploys as-is, so no framework preset or extra settings
+are needed.
 
-Environment variables (Project → Settings → Environment Variables):
-
-| Variable | Scope | Value |
-| --- | --- | --- |
-| `GROQ_API_KEY` | server only | A Groq API key for the assistant |
-
-`GROQ_API_KEY` is read only by the `/api/chat` route. Never prefix it with
-`NEXT_PUBLIC_`, and never commit it. Rotate any key that has been shared in plain text.
+No environment variables are required. Each user pastes their own provider key on the
+**Key** page (OpenAI, Anthropic, Google Gemini, Groq, xAI Grok, or any OpenAI-compatible
+URL). The key is stored in that user's browser and sent, with the redacted transcript
+only, through the app's server function to the provider.
 
 ## Local development
 
@@ -52,12 +47,12 @@ Environment variables (Project → Settings → Environment Variables):
 # Engine
 .venv\Scripts\uvicorn anonymizer.api:app --reload        # http://localhost:8000
 
-# Docs site
+# Web app
 cd web
 npm install
-npm run index                                            # regenerate embeddings
 npm run dev                                              # http://localhost:3000
+npm run typecheck && npm run lint && npm run build       # checks before pushing
 ```
 
-Copy `web/.env.example` to `web/.env.local` and set `GROQ_API_KEY` to enable the
-assistant locally.
+The dashboard starts with synthetic sample data; switch it off with the **Sample data**
+toggle to see your own usage.

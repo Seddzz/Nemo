@@ -15,7 +15,7 @@
 - **File workflow** — redact a document to a clean file, then use that file anywhere: paste it into a chat, load it in any agent, share it onward. PII never reaches a model.
 - **Stable redaction** — PII becomes numbered placeholders (`[PERSON_1]`, `[IBAN_1]`) or realistic fakes. Redaction is one-way: redacted text is the only artifact, no mapping is kept or written.
 - **Local-first privacy** — detection runs on your machine; no request ever leaves your infrastructure.
-- **Docs site** — the `web/` folder ships a Next.js docs site with a RAG assistant (deployable on Vercel); the engine and your data stay on your machine.
+- **Web app** — the `web/` folder ships the Nemo web app (TanStack Start, deployable on Vercel): redact text and files in the browser, chat with OpenAI, Claude, Gemini, Groq or Grok through a redacted transcript, and see a usage dashboard. Your API key stays in your browser.
 
 ## Requirements
 
@@ -35,7 +35,7 @@ cd Nemo
 docker compose up --build
 ```
 
-This starts the FastAPI engine on `:8000` (the docs site in `web/` runs separately — see below).
+This starts the FastAPI engine on `:8000` (the web app in `web/` runs separately — see [Deployment](docs/deployment.md)).
 
 ### Option B — pip (into a virtualenv)
 
