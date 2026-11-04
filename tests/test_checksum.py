@@ -186,6 +186,10 @@ class TestCardDetector:
     def test_negative(self):
         run_detector_tests(CardDetector(), [], LUHN_INVALID, "CARD")
 
+    def test_card_fragment_inside_iban_is_ignored(self):
+        text = "IBAN MA64 0077 8000 0123 4567 8901 2345"
+        assert CardDetector().detect(text) == []
+
 
 class TestSIRENDetector:
     def test_positive(self):
@@ -193,6 +197,10 @@ class TestSIRENDetector:
     
     def test_negative(self):
         run_detector_tests(SIRENDetector(), [], SIREN_INVALID, "SIREN")
+
+    def test_siren_inside_rib_is_ignored(self):
+        text = "RIB 007 780 0001234567890123 45"
+        assert SIRENDetector().detect(text) == []
 
 
 class TestSIRETDetector:

@@ -1,0 +1,270 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --color-bg: #090909;
+  --color-surface: #0e0e0e;
+  --color-raised: #1c1c1c;
+  --color-line: #262626;
+  --color-fg: #f4f4f4;
+  --color-muted: #8d8d8d;
+  --color-muted-foreground: #8d8d8d;
+  --color-faint: #5a5a5a;
+  --color-brass: #f4f4f4;
+  --color-lime: #c8ff00;
+  --color-secondary: #c8ff00;
+  --color-send: #101910;
+  --color-ink: #101910;
+  --color-danger: #e06a5c;
+  --color-ok: #9a9a9a;
+}
+
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+
+  /* Whole-app scale. Viewport-height layouts divide by it (see .h-app) so they still fit. */
+  :root {
+    --ui-zoom: 1;
+  }
+
+  html {
+    zoom: var(--ui-zoom);
+  }
+
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: #2c2c2c;
+    color: var(--color-fg);
+  }
+
+  textarea,
+  input {
+    caret-color: var(--color-lime);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility rise {
+  animation: rise 560ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.nav-icon {
+  transition:
+    transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    color 240ms ease;
+}
+
+.nice-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #343434 transparent;
+}
+
+.nice-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.nice-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.nice-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #343434;
+}
+
+.nice-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--color-lime);
+}
+
+.group:hover .nav-icon {
+  transform: translateY(-1px) scale(1.14) rotate(-5deg);
+}
+
+.group:active .nav-icon {
+  transform: scale(0.94);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
+  .sound-slash, .sound-wave, .sound-speaker {
+    transition: none;
+  }
+  .nav-icon,
+  .group:hover .nav-icon,
+  .group:active .nav-icon {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* Full-height shell that stays exactly one screen tall under the html zoom. */
+@utility h-app {
+  height: calc(100dvh / var(--ui-zoom));
+}
+
+@utility min-h-app {
+  min-height: calc(100dvh / var(--ui-zoom));
+}
+
+@utility font-serif {
+  font-family: var(--font-serif);
+}
+
+:root {
+  --ring-duration: 150ms;
+  --bubble-sent: #c8ff00;
+  --bubble-sent-foreground: #101910;
+  --bubble-received: #e9e9eb;
+  --bubble-received-foreground: #000000;
+}
+
+.dark {
+  --bubble-received: #3b3b3d;
+  --bubble-received-foreground: #ffffff;
+}
+
+@theme inline {
+  --color-bubble-sent: var(--bubble-sent);
+  --color-bubble-sent-foreground: var(--bubble-sent-foreground);
+  --color-bubble-received: var(--bubble-received);
+  --color-bubble-received-foreground: var(--bubble-received-foreground);
+}
+
+@utility transition-ring {
+  transition-property:
+    color, background-color, border-color, box-shadow, outline-color, outline-offset;
+  transition-duration: var(--ring-duration);
+  transition-timing-function: var(--ease-out);
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0ms;
+  }
+}
+
+/* Sound layer tokens */
+:root {
+  --shell-fg-muted: #333333;
+  --shell-fg-faint: #6d6d6d;
+}
+
+.dark {
+  --shell-fg-muted: #d4d4d4;
+  --shell-fg-faint: #8e8e8e;
+}
+
+@theme inline {
+  --color-shell-fg-muted: var(--shell-fg-muted);
+  --color-shell-fg-faint: var(--shell-fg-faint);
+}
+
+  .sound-slash {
+    stroke-dasharray: 1 2;
+    stroke-dashoffset: 1.02;
+    --slash-ms: 200ms;
+    transition: stroke-dashoffset var(--slash-ms) var(--ease-out);
+}
+  [data-muted='true'] .sound-slash {
+    stroke-dashoffset: 0;
+    --slash-ms: 260ms;
+}
+  .sound-wave {
+    transform-box: view-box;
+    transform-origin: 11px 12px;
+    transition: opacity 130ms var(--ease-out) var(--wave-delay), transform 130ms var(--ease-out) var(--wave-delay), filter 130ms var(--ease-out) var(--wave-delay);
+}
+  [data-muted='true'] .sound-wave {
+    opacity: 0;
+    transform: scale(0.25);
+    filter: blur(1px);
+}
+  .sound-wave-inner {
+    --wave-delay: 45ms;
+}
+  .sound-wave-outer {
+    --wave-delay: 20ms;
+}
+  [data-muted='true'] .sound-wave-inner {
+    --wave-delay: 50ms;
+}
+  [data-muted='true'] .sound-wave-outer {
+    --wave-delay: 75ms;
+}
+  .sound-speaker {
+    --speaker-ms: 220ms;
+    --speaker-delay: 0ms;
+    transition: transform var(--speaker-ms) var(--ease-out) var(--speaker-delay);
+}
+  [data-muted='true'] .sound-speaker {
+    transform: translateX(5.5px);
+    --speaker-ms: 260ms;
+    --speaker-delay: 80ms;
+}
+/* Thinking dots, from the Kobra Conversation demo */
+.t-msg-dots {
+  --msg-dot-cycle: 0.55s;
+  --msg-dot-stagger: 0.1s;
+  --msg-dot-lift: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 1lh;
+}
+
+.t-msg-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentcolor;
+  opacity: 0.45;
+  animation: msg-dot-bounce calc(var(--msg-dot-cycle) * 2) ease-in-out infinite;
+  animation-delay: calc(var(--msg-dot-stagger) * var(--msg-dot-index, 0));
+}
+
+@keyframes msg-dot-bounce {
+  0%, 90%, 100% {
+    opacity: 0.45;
+    transform: translateY(0);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(calc(var(--msg-dot-lift) * -1));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-msg-dot {
+    opacity: 0.6;
+    animation: none;
+  }
+}

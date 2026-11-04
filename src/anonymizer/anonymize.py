@@ -1,12 +1,13 @@
 """Anonymizer: replace detected entities with stable placeholders or fakes."""
 from anonymizer.detect import Entity, validate_entity_offsets
-from anonymizer.fakes import FakeGenerator
+from anonymizer.fakes import FakeGenerator, guess_locale
 
 
 def replacement_table(
     entities: list[Entity],
     strategy: str = "placeholder",
     faker: FakeGenerator | None = None,
+    text: str = "",
 ) -> dict[tuple[str, str], str]:
     """Compute the ``(label, original) -> replacement`` table shared by the
     text pipeline and the PDF renderer so both produce identical tokens."""
@@ -25,15 +26,13 @@ def replacement_table(
             replacement = f"[{entity.label}_{counters[entity.label]}]"
             replacement_by_key[key] = replacement
     else:
-        generator = faker or FakeGenerator()
+        generator = faker or FakeGenerator(locale=guess_locale(text))
         used: set[str] = set()
         for entity in sorted(entities, key=lambda e: e.start):
             key = (entity.label, entity.text)
             if key in replacement_by_key:
                 continue
-            fake = generator.generate(entity.label)
-            while fake in used:
-                fake = generator.generate(entity.label)
+            fake = generator.generate_unique(entity.label, entity.text, used)
             used.add(fake)
             replacement_by_key[key] = fake
 
@@ -76,6 +75,6 @@ def anonymize_text(
     table = (
         replacements
         if replacements is not None
-        else replacement_table(entities, strategy=strategy, faker=faker)
+        else replacement_table(entities, strategy=strategy, faker=faker, text=text)
     )
     return apply_replacements(text, entities, table)
