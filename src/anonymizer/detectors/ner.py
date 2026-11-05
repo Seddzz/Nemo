@@ -94,8 +94,9 @@ def allowed(prev: str, cur: str) -> bool:
     return cp in ("O", "B", "S")
 
 
-def viterbi_decode(logp: torch.Tensor | object, id2label: dict[int, str]) -> list[str]:
+def viterbi_decode(logp, id2label: dict[int, str]) -> list[str]:
     import numpy as np
+
     if hasattr(logp, "cpu"):
         logp = logp.cpu().numpy()
     T, C = logp.shape
@@ -128,11 +129,7 @@ def decode_bioes(
     id2label: dict[int, str],
     scores: list[float] | None = None,
 ) -> list[RawSpan]:
-    """Rebuild full spans from BIOES token tags.
-
-    The tokenizer splits names and other values into subword pieces, so token
-    offsets must be aggregated back into a single character span.
-    """
+    """Rebuild full spans from BIOES token tags."""
     raw: list[dict[str, object]] = []
     current: dict[str, object] | None = None
 

@@ -1,19 +1,14 @@
-FROM python:3.11-slim
-
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+FROM node:20-alpine
 
 WORKDIR /app
 
-COPY pyproject.toml README.md LICENSE ./
-COPY src ./src
+COPY web/package*.json ./
+RUN npm ci
 
-RUN pip install \
-    --index-url https://download.pytorch.org/whl/cpu \
-    --extra-index-url https://pypi.org/simple \
-    .
+COPY web/ ./
 
-EXPOSE 8000
+RUN npm run build
 
-CMD ["uvicorn", "anonymizer.api:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 3000
+
+CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "3000"]

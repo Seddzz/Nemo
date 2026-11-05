@@ -55,4 +55,3 @@ __all__ = [
     "ALL_CHECKSUM_DETECTORS",
     "detect_all_checksum",
 ]
-
