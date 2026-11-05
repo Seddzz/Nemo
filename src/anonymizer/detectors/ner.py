@@ -260,7 +260,6 @@ class NerDetector:
 
     def __init__(
         self,
-        model_name: str | None = None,
         confidence_threshold: float = 0.5,
         max_tokens: int = 512,
         stride: int = 64,
@@ -275,7 +274,6 @@ class NerDetector:
         logging.set_verbosity_error()
         logging.disable_progress_bar()
 
-        self.model_name = model_name or os.getenv("ANONYMIZER_NER_MODEL", MODEL_NAME)
         self.confidence_threshold = confidence_threshold
         self.max_tokens = max_tokens
         self.stride = stride
@@ -290,9 +288,9 @@ class NerDetector:
         dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
         cache = str(cache_dir or MODEL_CACHE_DIR)
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, cache_dir=cache)
+        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, cache_dir=cache)
         self.model = AutoModelForTokenClassification.from_pretrained(
-            self.model_name,
+            MODEL_NAME,
             cache_dir=cache,
             dtype=dtype,
         )

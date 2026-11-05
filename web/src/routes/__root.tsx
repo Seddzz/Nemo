@@ -10,7 +10,7 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: APP_NAME },
-      { name: "theme-color", content: "#0c0c0a" },
+      { name: "theme-color", content: "#090909" },
       {
         name: "description",
         content: "A local anonymization layer between you and your AI model.",
@@ -30,6 +30,12 @@ export const Route = createRootRoute({
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <HeadContent />
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              '(function(){try{var t=localStorage.getItem("nemo-theme");var e=document.documentElement;if(t==="light"){e.classList.remove("dark");e.classList.add("light")}else{e.classList.add("dark");e.classList.remove("light")}}catch(e){}})();',
+          }}
+        />
       </head>
       <body>
         <Shell>

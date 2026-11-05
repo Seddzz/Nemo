@@ -23,8 +23,8 @@ accepted for the first multilingual (FR/EN) version — plus what we deliberatel
 
 The model is public (Apache-2.0), so no Hugging Face token is required. The first
 run downloads ~2.8 GB. It is wrapped behind the project-wide `Detector` protocol
-(`detect(text) -> list[Entity]`), so it is interchangeable with the regex,
-checksum and context detectors.
+(`detect(text) -> list[Entity]`) alongside the regex, checksum and context
+detectors.
 
 `openmed.extract_pii` is not used: its span offsets are broken. The decoder here
 works directly on token offsets and was validated against the reference notebook.
@@ -98,7 +98,7 @@ silently dropped by the threshold.
   regex/checksum/context results.
 - The model is multilingual and already covers FR/EN document text, including
   Moroccan identifiers when paired with the context regexes.
-- Fully pluggable behind `Detector`; swapping the model is a one-line change.
+- Loaded lazily behind `Detector`, so regex-only requests do not load the model.
 
 ---
 

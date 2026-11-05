@@ -2,8 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Composer, type ComposerPayload } from "@/components/composer";
-import { CipherHeadline } from "@/components/headline";
-import { MarkFileText, MarkPencil } from "@/components/marks";
+import { MarkFileText, MarkIncognito, MarkPencil } from "@/components/marks";
 import {
   Conversation,
   ConversationBubble,
@@ -41,11 +40,14 @@ function Relay() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [reveal, setReveal] = useState(false);
+  const [incognito, setIncognito] = useState(false);
+  const [ephemeral, setEphemeral] = useState<ChatMessage[]>([]);
 
   async function send(draft: ComposerPayload) {
     const state = useVault.getState();
     const prompt = draft.text.trim();
-    if ((!prompt && draft.attachments.length === 0) || !thread || busy) return;
+    if ((!prompt && draft.attachments.length === 0) || busy) return;
+    if (!incognito && !thread) return;
     setError("");
 
     const maskPrompt = draft.anonymize && (state.anonymizeScope === "both" || state.anonymizeScope === "text");
@@ -82,8 +84,6 @@ function Relay() {
         !state.ledger.some((prior) => prior.token === hit.token && prior.value === hit.value) &&
         allHits.findIndex((h) => h.token === hit.token && h.value === hit.value) === index,
     );
-    remember(allHits);
-
     const seed = prompt || files[0]?.name || "";
     const userMsg: ChatMessage = {
       id: Math.random().toString(36).slice(2, 10),
@@ -93,26 +93,38 @@ function Relay() {
       hits: allHits,
       attachments: files.length > 0 ? files : undefined,
     };
-    pushMessage(thread.id, userMsg);
-    record(
-      {
-        kind: "chat",
-        title: seed.replace(/\s+/g, " ").slice(0, 48) || "Attached file",
-        entities: allHits.length,
-      },
-      fresh.length,
-    );
+    const history = incognito
+      ? [...ephemeral, userMsg]
+      : thread
+        ? [...thread.messages, userMsg]
+        : [userMsg];
 
-    const history = [...thread.messages, userMsg];
+    if (incognito) {
+      setEphemeral((prev) => [...prev, userMsg]);
+    } else if (thread) {
+      pushMessage(thread.id, userMsg);
+      remember(allHits);
+      record(
+        {
+          kind: "chat",
+          title: seed.replace(/\s+/g, " ").slice(0, 48) || "Attached file",
+          entities: allHits.length,
+        },
+        fresh.length,
+      );
+    }
+
     if (apiKey.trim().length < 8) {
-      pushMessage(thread.id, {
+      const held: ChatMessage = {
         id: Math.random().toString(36).slice(2, 10),
         role: "assistant",
         held: true,
         content:
           "Nothing was sent. Add a key and this anonymized transcript is the only text your model will receive.",
         masked: promptMasked,
-      });
+      };
+      if (incognito) setEphemeral((prev) => [...prev, held]);
+      else if (thread) pushMessage(thread.id, held);
       return;
     }
 
@@ -132,22 +144,26 @@ function Relay() {
       });
       if (!result.ok) {
         setError(result.error);
-        pushMessage(thread.id, {
+        const held: ChatMessage = {
           id: Math.random().toString(36).slice(2, 10),
           role: "assistant",
           content: result.error,
           held: true,
-        });
+        };
+        if (incognito) setEphemeral((prev) => [...prev, held]);
+        else if (thread) pushMessage(thread.id, held);
       } else {
         const shown = restoreReplies
           ? restore(result.text, [...state.ledger, ...allHits])
           : result.text;
-        pushMessage(thread.id, {
+        const reply: ChatMessage = {
           id: Math.random().toString(36).slice(2, 10),
           role: "assistant",
           content: shown,
           masked: result.text,
-        });
+        };
+        if (incognito) setEphemeral((prev) => [...prev, reply]);
+        else if (thread) pushMessage(thread.id, reply);
       }
     } finally {
       setBusy(false);
@@ -161,13 +177,15 @@ function Relay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const empty = !thread || thread.messages.length === 0;
+  const messages = incognito ? ephemeral : (thread?.messages ?? []);
+  const empty = messages.length === 0;
 
   // Messages already in the thread when it opens render in place; only new ones animate in.
   const reduce = useReducedMotion() ?? false;
+  const conversationKey = incognito ? "__incognito__" : thread?.id;
   const known = useRef<{ thread?: string; ids: Set<string> }>({ ids: new Set() });
-  if (known.current.thread !== thread?.id) {
-    known.current = { thread: thread?.id, ids: new Set(thread?.messages.map((m) => m.id)) };
+  if (known.current.thread !== conversationKey) {
+    known.current = { thread: conversationKey, ids: new Set(messages.map((m) => m.id)) };
   }
   const fresh = (id: string) => !known.current.ids.has(id);
   const enter = (skip: boolean) => ({
@@ -180,7 +198,7 @@ function Relay() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="relative flex h-12 items-center justify-center px-4">
-        {!empty && thread && (
+        {!incognito && !empty && thread && (
           <div className="flex items-center gap-2">
             {editingTitle ? (
               <form
@@ -216,27 +234,50 @@ function Relay() {
             )}
           </div>
         )}
-        <button
-          type="button"
-          onClick={() => setReveal((v) => !v)}
-          className="absolute right-4 text-xs text-faint hover:text-fg"
-        >
-          {reveal ? "Hide originals" : "Originals"}
-        </button>
+        <div className="absolute right-4 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setIncognito((v) => !v);
+              setEphemeral([]);
+              setError("");
+            }}
+            aria-pressed={incognito}
+            title="Incognito chat — messages are not saved"
+            className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] transition-colors ${
+              incognito ? "bg-raised text-fg" : "text-faint hover:text-fg"
+            }`}
+          >
+            <MarkIncognito className="size-3.5" />
+            <span className="hidden sm:inline">Incognito</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setReveal((v) => !v)}
+            className="text-xs text-faint hover:text-fg"
+          >
+            {reveal ? "Hide originals" : "Originals"}
+          </button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4">
         {empty ? (
           <div className="flex h-full flex-col items-center justify-center pb-16">
-            <CipherHeadline className="max-w-full px-4 text-center text-4xl font-bold tracking-[-0.045em] sm:text-5xl md:text-[4.25rem]" />
+            {incognito && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-raised px-2.5 py-1 text-[11px] text-muted">
+                <MarkIncognito className="size-3.5" /> Incognito
+              </span>
+            )}
             <p className="mt-5 max-w-md text-center text-sm leading-relaxed text-muted">
-              Ask a question, paste a note, or point at a file. Sensitive spans are stripped
-              before anything reaches your model.
+              {incognito
+                ? "This conversation stays in this tab and is never saved."
+                : "Ask a question, paste a note, or point at a file. Sensitive spans are stripped before anything reaches your model."}
             </p>
           </div>
         ) : (
           <Conversation className="mx-auto max-w-3xl gap-3 py-6">
-            {thread.messages.map((m) =>
+            {messages.map((m) =>
               m.role === "user" ? (
                 <ConversationBubble key={m.id} align="end" variant="default" sentAt={time(m.at)}>
                   <ConversationContent render={<motion.div {...enter(!fresh(m.id))} />}>

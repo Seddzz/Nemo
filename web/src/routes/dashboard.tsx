@@ -1,10 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import {
-  Bar,
-  BarChart,
+  Area,
+  AreaChart,
   CartesianGrid,
-  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -13,112 +12,215 @@ import {
 import type { Activity } from "@/lib/store";
 import { sampleData } from "@/lib/sample-data";
 
-
 export const Route = createFileRoute("/dashboard")({ component: Dashboard });
 
-function Dashboard() {
-  const sample = useMemo(() => sampleData(30), []);
-  const documents = sample.documents;
-  const entities = sample.entities;
-  const messagesRouted = sample.messages;
-  const activity = sample.activity;
-  const mix = sample.kinds.filter((k) => k.count > 0).sort((a, b) => b.count - a.count);
+const RANGES = [
+  { key: "1", label: "Today", days: 1 },
+  { key: "7", label: "Last 7 days", days: 7 },
+  { key: "30", label: "Last 30 days", days: 30 },
+  { key: "365", label: "Last 12 months", days: 365 },
+] as const;
 
-  const series = useMemo(() => bucket(activity, 30), [activity]);
-  const peak = series.reduce((best, row) => (row.entities > best.entities ? row : best), series[0]);
-  const kinds = mix.length;
-  const recent = activity.slice(0, 8);
+type RangeKey = (typeof RANGES)[number]["key"];
+
+function Dashboard() {
+  const sample = useMemo(() => sampleData(365), []);
+  const [range, setRange] = useState<RangeKey>("30");
+  const active = RANGES.find((r) => r.key === range) ?? RANGES[2];
+
+  const cutoff = useMemo(() => Date.now() - active.days * 86_400_000, [active.days]);
+  const activity = useMemo(
+    () => sample.activity.filter((a) => a.at >= cutoff),
+    [sample.activity, cutoff],
+  );
+
+  const entities = activity.reduce((sum, a) => sum + a.entities, 0);
+  const documents = activity.filter((a) => a.kind === "document");
+  const chats = activity.filter((a) => a.kind === "chat");
+  const documentCount = documents.length;
+  const messageCount = chats.length;
+  const docEntities = documents.reduce((sum, a) => sum + a.entities, 0);
+  const chatEntities = chats.reduce((sum, a) => sum + a.entities, 0);
+  const kinds = sample.kinds.filter((k) => k.count > 0);
+
+  const series = useMemo(
+    () => (active.days >= 365 ? bucketMonths(activity, 12) : bucketDays(activity, active.days)),
+    [activity, active.days],
+  );
+  const peak = series.reduce(
+    (best, row) => (row.entities > best.entities ? row : best),
+    series[0],
+  );
   const entityDelta = delta(series.map((s) => s.entities));
   const docDelta = delta(series.map((s) => s.documents));
   const msgDelta = delta(series.map((s) => s.messages));
-
-  const summary =
-    `Across the last 30 days, ${documents} documents and ${messagesRouted} messages were anonymized, ` +
-    `masking ${entities.toLocaleString()} sensitive spans across ${kinds} entity types. ` +
-    `${peak && peak.entities > 0 ? `Peak activity reached ${peak.entities.toLocaleString()} entities on ${peak.full}.` : "No activity yet."}`;
+  const passes = documentCount + messageCount;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-5xl px-6 py-8 md:px-10">
-          <p className="text-sm leading-relaxed text-muted">
-            {summary}
-          </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mx-auto max-w-6xl px-6 py-8 md:px-10">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-lg font-medium tracking-tight">Dashboard</h1>
+            <Link
+              to="/anonymize"
+              className="rounded-full bg-fg px-3.5 py-1.5 text-xs font-medium text-ink transition-opacity hover:opacity-90"
+            >
+              New pass
+            </Link>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-1.5">
+            {RANGES.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                onClick={() => setRange(r.key)}
+                className={`rounded-full px-3 py-1.5 text-[11px] transition-colors ${
+                  range === r.key ? "bg-raised text-fg" : "text-faint hover:text-fg"
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Kpi
               label="Entities anonymized"
               value={entities.toLocaleString()}
-              note={`across ${kinds} entity types`}
+              note={`across ${kinds.length} entity types`}
               delta={entityDelta}
               points={series.map((s) => s.entities)}
             />
             <Kpi
               label="Documents anonymized"
-              value={documents.toLocaleString()}
+              value={documentCount.toLocaleString()}
               note="text files and pastes"
               delta={docDelta}
               points={series.map((s) => s.documents)}
             />
             <Kpi
               label="Messages protected"
-              value={messagesRouted.toLocaleString()}
+              value={messageCount.toLocaleString()}
               note="via your own model key"
               delta={msgDelta}
               points={series.map((s) => s.messages)}
             />
             <Kpi
               label="Kinds in the ledger"
-              value={String(kinds)}
+              value={String(kinds.length)}
               note="person, email, phone…"
               delta={null}
               points={series.map((s) => s.entities)}
             />
           </div>
 
-          <section
-            className="rise mt-4 rounded-2xl border border-line bg-surface p-4 md:p-5"
-            style={{ animationDelay: "140ms" }}
-          >
+          <div className="mt-4 grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+            <section className="rounded-xl border border-line/70 bg-surface/60 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-medium">Anonymization details</h2>
+                <span className="text-[11px] text-faint">{active.label}</span>
+              </div>
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-left text-[13px]">
+                  <thead>
+                    <tr className="border-b border-line/60 text-[10px] tracking-wide text-faint uppercase">
+                      <th className="pb-2 pr-3 font-medium">Source type</th>
+                      <th className="pb-2 pr-3 text-right font-medium">Passes</th>
+                      <th className="pb-2 pr-3 text-right font-medium">Entities</th>
+                      <th className="pb-2 text-right font-medium">Share</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <DetailRow
+                      label="Documents"
+                      passes={documentCount}
+                      entities={docEntities}
+                      share={entities ? docEntities / entities : 0}
+                    />
+                    <DetailRow
+                      label="Chats"
+                      passes={messageCount}
+                      entities={chatEntities}
+                      share={entities ? chatEntities / entities : 0}
+                    />
+                    <tr className="text-muted">
+                      <td className="pt-3 font-medium text-fg">Total</td>
+                      <td className="pt-3 text-right tabular-nums">{passes.toLocaleString()}</td>
+                      <td className="pt-3 text-right tabular-nums">{entities.toLocaleString()}</td>
+                      <td className="pt-3 text-right tabular-nums">100%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-line/70 bg-surface/60 p-4">
+              <h2 className="text-sm font-medium">Ledger breakdown</h2>
+              <ul className="mt-3 space-y-2.5">
+                {kinds.slice(0, 7).map((k) => {
+                  const count = Math.round((k.count / Math.max(1, sample.entities)) * entities);
+                  return (
+                    <li
+                      key={k.kind}
+                      className="flex items-center justify-between gap-3 text-[12px]"
+                    >
+                      <span className="text-muted">{k.kind.toLowerCase()}</span>
+                      <span className="text-fg tabular-nums">{count.toLocaleString()}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="mt-3 flex items-center justify-between border-t border-line/60 pt-2.5 text-[12px]">
+                <span className="text-muted">Net entities</span>
+                <span className="text-fg tabular-nums">{entities.toLocaleString()}</span>
+              </div>
+            </section>
+          </div>
+
+          <section className="mt-4 rounded-xl border border-line/70 bg-surface/60 p-4 md:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-medium">Entities anonymized per day</h2>
-                <p className="mt-1 text-[13px] text-muted">
-                  {peak && peak.entities > 0
-                    ? `Peak of ${peak.entities.toLocaleString()} on ${peak.full}`
-                    : "No anonymizations in this range yet"}
-                </p>
-              </div>
-              <div className="flex items-center gap-4 text-[11px] text-faint">
-                <span className="inline-flex items-center gap-1.5">
-                  <i className="inline-block size-2 rounded-sm bg-[#3a3a3a]" /> Daily total
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <i className="inline-block size-2 rounded-sm bg-lime" /> Today
-                </span>
-              </div>
+              <h2 className="text-sm font-medium">Overview</h2>
+              <span className="text-[11px] text-faint">
+                {peak && peak.entities > 0
+                  ? `Peak ${peak.entities.toLocaleString()} on ${peak.full}`
+                  : "No activity in this range"}
+              </span>
             </div>
-            <div className="mt-4 h-72">
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <Stat label="Entities" value={entities} />
+              <Stat label="Passes" value={passes} highlight />
+              <Stat label="Messages" value={messageCount} />
+            </div>
+            <div className="mt-5 h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={series} barCategoryGap="28%">
-                  <CartesianGrid vertical={false} stroke="#242424" />
+                <AreaChart data={series} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="dashFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-fg)" stopOpacity={0.22} />
+                      <stop offset="100%" stopColor="var(--color-fg)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} stroke="var(--color-line)" />
                   <XAxis
                     dataKey="axis"
                     interval="preserveStartEnd"
-                    tick={{ fill: "#8d8d8d", fontSize: 11 }}
+                    tick={{ fill: "var(--color-muted)", fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
                   />
                   <YAxis
                     width={36}
                     allowDecimals={false}
-                    tick={{ fill: "#8d8d8d", fontSize: 11 }}
+                    tick={{ fill: "var(--color-muted)", fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
                   />
                   <Tooltip
-                    cursor={{ fill: "transparent" }}
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
+                    cursor={{ stroke: "var(--color-line)" }}
+                    content={({ active: hovered, payload }) => {
+                      if (!hovered || !payload?.length) return null;
                       const row = payload[0].payload as (typeof series)[number];
                       return (
                         <div className="rounded-lg border border-line bg-raised px-3 py-2 text-xs">
@@ -130,90 +232,17 @@ function Dashboard() {
                       );
                     }}
                   />
-                  <Bar
+                  <Area
+                    type="monotone"
                     dataKey="entities"
-                    radius={[3, 3, 0, 0]}
-                    isAnimationActive
-                    animationDuration={700}
-                  >
-                    {series.map((row) => (
-                      <Cell key={row.key} fill={row.today ? "#c8ff00" : "#3a3a3a"} />
-                    ))}
-                  </Bar>
-                </BarChart>
+                    stroke="var(--color-fg)"
+                    strokeWidth={1.5}
+                    fill="url(#dashFill)"
+                  />
+                </AreaChart>
               </ResponsiveContainer>
             </div>
           </section>
-
-          <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1.4fr]">
-            <section
-              className="rise rounded-2xl border border-line bg-surface p-4 md:p-5"
-              style={{ animationDelay: "200ms" }}
-            >
-              <h2 className="text-sm font-medium">Entity mix</h2>
-              <p className="mt-1 text-[13px] text-muted">What was anonymized, by type</p>
-              {mix.length === 0 ? (
-                <p className="mt-6 text-[13px] text-faint">Nothing anonymized yet.</p>
-              ) : (
-                <ul className="mt-4 space-y-3">
-                  {mix.map((k) => {
-                    const share = k.count / Math.max(1, mix[0].count);
-                    return (
-                      <li key={k.kind} className="text-[12px]">
-                        <div className="flex justify-between gap-2">
-                          <span className="text-muted">{k.kind.toLowerCase()}</span>
-                          <span className="tabular-nums">{k.count.toLocaleString()}</span>
-                        </div>
-                        <div className="mt-1 h-1.5 rounded-full bg-raised">
-                          <div
-                            className="h-full rounded-full bg-lime"
-                            style={{ width: `${Math.max(4, share * 100)}%` }}
-                          />
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-
-            <section
-              className="rise rounded-2xl border border-line bg-surface p-4 md:p-5"
-              style={{ animationDelay: "260ms" }}
-            >
-              <h2 className="text-sm font-medium">Recent activity</h2>
-              <p className="mt-1 text-[13px] text-muted">Latest chats and documents</p>
-              {recent.length === 0 ? (
-                <p className="mt-6 text-[13px] text-faint">
-                  No activity yet. Send a chat or anonymize a file.
-                </p>
-              ) : (
-                <ul className="mt-3 divide-y divide-line">
-                  {recent.map((a) => (
-                    <li key={a.id} className="flex items-center gap-3 py-2.5 text-[13px]">
-                      <span
-                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] tracking-wide uppercase ${
-                          a.kind === "document" ? "bg-raised text-fg" : "bg-raised text-muted"
-                        }`}
-                      >
-                        {a.kind === "document" ? "Doc" : "Chat"}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate">{a.title}</span>
-                      <span className="shrink-0 text-[12px] text-muted tabular-nums">
-                        {a.entities} masked
-                      </span>
-                      <span
-                        className="w-14 shrink-0 text-right text-[11px] text-faint"
-                        suppressHydrationWarning
-                      >
-                        {when(a.at)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          </div>
         </div>
       </div>
     </div>
@@ -234,22 +263,60 @@ function Kpi({
   points: number[];
 }) {
   return (
-    <article className="rise rounded-2xl border border-line bg-surface px-4 py-4">
-      <div className="flex items-center justify-between gap-2 text-[12px] text-muted">
+    <article className="rounded-xl border border-line/70 bg-surface/60 px-4 py-4">
+      <div className="flex items-center justify-between gap-2 text-[11px] text-muted">
         <span>{label}</span>
         {delta !== null && (
-          <span className={delta >= 0 ? "text-lime" : "text-danger"}>
+          <span className="text-faint">
             {delta >= 0 ? "+" : ""}
             {delta.toFixed(1)}%
           </span>
         )}
       </div>
       <div className="mt-3 flex items-end justify-between gap-3">
-        <div className="text-3xl tracking-tight">{value}</div>
+        <div className="text-2xl tracking-tight">{value}</div>
         <Spark points={points} />
       </div>
-      <p className="mt-2 text-[12px] text-faint">{note}</p>
+      <p className="mt-2 text-[11px] text-faint">{note}</p>
     </article>
+  );
+}
+
+function DetailRow({
+  label,
+  passes,
+  entities,
+  share,
+}: {
+  label: string;
+  passes: number;
+  entities: number;
+  share: number;
+}) {
+  return (
+    <tr className="border-b border-line/40 text-muted">
+      <td className="py-2.5 pr-3 text-fg">{label}</td>
+      <td className="py-2.5 pr-3 text-right tabular-nums">{passes.toLocaleString()}</td>
+      <td className="py-2.5 pr-3 text-right tabular-nums">{entities.toLocaleString()}</td>
+      <td className="py-2.5 text-right tabular-nums">{(share * 100).toFixed(1)}%</td>
+    </tr>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  highlight,
+}: {
+  label: string;
+  value: number;
+  highlight?: boolean;
+}) {
+  return (
+    <div className={`rounded-lg px-4 py-3 ${highlight ? "bg-raised" : ""}`}>
+      <div className="text-[11px] text-faint">{label}</div>
+      <div className="mt-1 text-2xl tracking-tight">{value.toLocaleString()}</div>
+    </div>
   );
 }
 
@@ -266,7 +333,7 @@ function Spark({ points }: { points: number[] }) {
     })
     .join(" ");
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-7 w-24 text-lime" aria-hidden>
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-7 w-20 text-muted" aria-hidden>
       <path d={d} fill="none" stroke="currentColor" strokeWidth="1.5" />
     </svg>
   );
@@ -280,12 +347,23 @@ function delta(values: number[]) {
   return ((next - prev) / prev) * 100;
 }
 
-function bucket(activity: Activity[], days: number) {
+type Bucket = {
+  key: string;
+  entities: number;
+  documents: number;
+  messages: number;
+  label: string;
+  axis: string;
+  full: string;
+  today: boolean;
+};
+
+function bucketDays(activity: Activity[], days: number): Bucket[] {
   // UTC days throughout, so the server render and the browser bucket identically.
   const now = new Date();
   now.setUTCHours(0, 0, 0, 0);
   const fmt = { month: "short", day: "numeric", timeZone: "UTC" } as const;
-  const rows = [];
+  const rows: Bucket[] = [];
   for (let i = days - 1; i >= 0; i--) {
     const day = new Date(now);
     day.setUTCDate(now.getUTCDate() - i);
@@ -306,10 +384,28 @@ function bucket(activity: Activity[], days: number) {
   return rows;
 }
 
-function when(at: number) {
-  const s = Math.max(0, Math.round((Date.now() - at) / 1000));
-  if (s < 60) return "now";
-  if (s < 3600) return `${Math.round(s / 60)}m ago`;
-  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
-  return `${Math.round(s / 86400)}d ago`;
+function bucketMonths(activity: Activity[], months: number): Bucket[] {
+  const now = new Date();
+  now.setUTCHours(0, 0, 0, 0);
+  const rows: Bucket[] = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+    const hits = activity.filter((a) => {
+      const at = new Date(a.at);
+      return at >= start && at < end;
+    });
+    const label = start.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+    rows.push({
+      key: start.toISOString().slice(0, 7),
+      entities: hits.reduce((sum, a) => sum + a.entities, 0),
+      documents: hits.filter((a) => a.kind === "document").length,
+      messages: hits.filter((a) => a.kind === "chat").length,
+      label,
+      axis: label,
+      full: label,
+      today: i === 0,
+    });
+  }
+  return rows;
 }

@@ -1,26 +1,26 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { PanelLeft } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   MarkAccount,
   MarkBoard,
-  MarkFile,
+  MarkIncognito,
   MarkKey,
-  MarkLogo,
   MarkMoney,
   MarkNotes,
   MarkPencil,
   MarkPlus,
   MarkSearch,
-  MarkSidebarOpen,
   MarkTrash,
 } from "@/components/marks";
 import { NAV_META, orderedNav, type NavKey } from "@/lib/nav";
 import { useVault } from "@/lib/store";
+import { ThemeSwitch, ThemeToggleButton } from "@/components/theme-switch";
 
 const NAV_ICONS: Record<NavKey, typeof MarkBoard> = {
   dashboard: MarkBoard,
-  anonymize: MarkFile,
+  anonymize: MarkIncognito,
   docs: MarkNotes,
   settings: MarkKey,
 };
@@ -82,6 +82,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const threads = useVault((s) => s.threads);
   const activeId = useVault((s) => s.activeId);
   const newThread = useVault((s) => s.newThread);
+  const clearThreads = useVault((s) => s.clearThreads);
   const selectThread = useVault((s) => s.selectThread);
   const navOrder = useVault((s) => s.navOrder);
   const setNavOrder = useVault((s) => s.setNavOrder);
@@ -97,6 +98,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const [query, setQuery] = useState("");
   const [customizing, setCustomizing] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [clearConfirm, setClearConfirm] = useState(false);
   const { open, setOpen, width, setWidth } = useSidebar();
   const [dragging, setDragging] = useState(false);
   const reduceMotion = useReducedMotion() ?? false;
@@ -145,17 +147,25 @@ export function Shell({ children }: { children: ReactNode }) {
       <aside
         id="app-sidebar"
         aria-label="Sidebar"
-        style={{ width: open ? width : 0 }}
-        className={`relative hidden shrink-0 overflow-hidden bg-surface md:flex ${
-          open ? "border-r border-line" : ""
+        style={{ width: open ? width : 68 }}
+        className={`relative hidden shrink-0 overflow-hidden border-r border-line/80 bg-surface/95 backdrop-blur md:flex ${
+          open ? "" : "transition-[width] duration-200 ease-out motion-reduce:transition-none"
         } ${dragging ? "" : "transition-[width] duration-200 ease-out motion-reduce:transition-none"}`}
       >
 {open ? (
         <div className="flex h-full flex-col" style={{ width: open ? width : 64, minWidth: open ? width : 64 }}>
           <div className="flex items-center justify-between px-3 pt-3 pb-2">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-raised text-lime">
-              <MarkLogo className="size-4" />
-            </span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-controls="app-sidebar"
+              aria-expanded={true}
+              aria-label="Toggle sidebar"
+              title="Toggle sidebar"
+              className="rounded-lg p-2 text-muted transition-colors hover:bg-raised hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime"
+            >
+              <PanelLeft className="size-4" />
+            </button>
           </div>
           <div className="flex flex-col gap-0.5 px-2">
             <div className="px-3 pt-2 pb-1 text-[10px] font-bold tracking-[0.14em] text-faint uppercase">
@@ -257,8 +267,41 @@ export function Shell({ children }: { children: ReactNode }) {
             })}
           </div>
 
-          <div className="mt-5 px-3 text-[10px] font-bold tracking-[0.14em] text-faint uppercase">
-            Recents {visible.length}
+          <div className="mt-5 flex items-center justify-between px-3 text-[10px] font-bold tracking-[0.14em] text-faint uppercase">
+            <span>Recents {visible.length}</span>
+            {clearConfirm ? (
+              <span className="flex items-center gap-2 tracking-normal normal-case">
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearThreads();
+                    setClearConfirm(false);
+                  }}
+                  className="text-danger hover:text-danger/80"
+                >
+                  Clear all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClearConfirm(false)}
+                  className="text-muted hover:text-fg"
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              threads.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setClearConfirm(true)}
+                  aria-label="Remove all conversations"
+                  title="Remove all conversations"
+                  className="text-faint transition-colors hover:text-danger"
+                >
+                  <MarkTrash className="size-3.5" />
+                </button>
+              )
+            )}
           </div>
           <div className="nice-scroll mt-1 min-h-0 flex-1 overflow-y-auto px-2 pb-4">
             {visible.map((t) => (
@@ -282,6 +325,10 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="mt-auto px-3 pb-3">
+            <div className="mb-1 flex items-center justify-between py-1 pl-2 pr-0.5">
+              <span className="text-[11px] font-bold text-muted">Theme</span>
+              <ThemeSwitch />
+            </div>
             <button
               type="button"
               onClick={() => window.open("https://buy.stripe.com/test_checkout", "_blank", "noopener,noreferrer")}
@@ -302,33 +349,75 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
         </div>
         ) : (
-          <div className="flex h-full flex-col items-center gap-3 py-3">
-            {nav.map((key) => {
-              const Icon = NAV_ICONS[key];
-              const item = NAV_META[key];
-              const active = path.startsWith(item.to);
-              return (
-                <Link
-                  key={key}
-                  to={item.to}
-                  title={item.label}
-                  className={`rounded-md p-2 transition-colors ${active ? "text-fg" : "text-muted hover:bg-raised/60 hover:text-fg"}`}
-                >
-                  <Icon className={`nav-icon size-5 ${active ? "text-lime" : ""}`} />
-                </Link>
-              );
-            })}
+          <div className="flex h-full w-[68px] flex-col py-3">
+            <div className="flex items-center px-3 pb-2">
+              <button
+                type="button"
+                onClick={() => setOpen(true)}
+                aria-controls="app-sidebar"
+                aria-expanded={false}
+                aria-label="Toggle sidebar"
+                title="Toggle sidebar"
+                className="rounded-lg p-2 text-muted transition-colors hover:text-lime focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime"
+              >
+                <PanelLeft className="size-4" />
+              </button>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  newThread();
+                  void navigate({ to: "/chat" });
+                }}
+                aria-controls="app-sidebar"
+                aria-label="New session"
+                title="New session"
+                className="rounded-md p-2 text-muted transition-colors hover:text-lime focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime"
+              >
+                <MarkPlus className="nav-icon size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(true)}
+                aria-controls="app-sidebar"
+                aria-expanded={false}
+                aria-label="Search"
+                title="Search"
+                className="mb-2 rounded-md p-2 text-muted transition-colors hover:text-lime focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime"
+              >
+                <MarkSearch className="nav-icon size-4" />
+              </button>
+              {nav.map((key) => {
+                const Icon = NAV_ICONS[key];
+                const item = NAV_META[key];
+                const active = path.startsWith(item.to);
+                return (
+                  <Link
+                    key={key}
+                    to={item.to}
+                    title={item.label}
+                    className={`rounded-md p-2 transition-colors ${
+                      active ? "text-lime" : "text-muted hover:text-lime"
+                    }`}
+                  >
+                    <Icon className={`nav-icon size-4 ${active ? "text-lime" : ""}`} />
+                  </Link>
+                );
+              })}
+            </div>
             <div className="mt-auto flex flex-col items-center gap-2">
+              <ThemeToggleButton />
               <button
                 type="button"
                 onClick={() => window.open("https://buy.stripe.com/test_checkout", "_blank", "noopener,noreferrer")}
                 title="Get full access"
-                className="rounded-md p-2 text-muted hover:bg-raised/60 hover:text-fg"
+                className="rounded-md p-2 text-muted hover:text-lime"
               >
-                <MarkMoney className="nav-icon size-5" />
+                <MarkMoney className="nav-icon size-4" />
               </button>
-              <Link to="/settings" title="Account" className="rounded-md p-2 text-muted hover:bg-raised/60 hover:text-fg">
-                <MarkAccount className="nav-icon size-5" />
+              <Link to="/settings" title="Account" className="rounded-md p-2 text-muted hover:text-lime">
+                <MarkAccount className="nav-icon size-4" />
               </Link>
             </div>
           </div>
@@ -378,7 +467,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </header>
-        <main className={`min-h-0 flex-1 overflow-hidden ${open ? "" : "md:pl-11"}`}>
+        <main className="min-h-0 flex-1 overflow-hidden">
           <motion.div
             key={path}
             initial={reduceMotion ? false : { opacity: 0, y: 6 }}

@@ -205,7 +205,7 @@ Three detector layers, deterministic priority on overlap (`checksum > regex > ne
 
 1. **Regex detectors** — emails, phone numbers, IBANs, dates, ZIPs, amounts, etc.
 2. **Checksum-validated detectors** — Luhn (credit cards), IBAN mod-97, SSN: high-precision, near-zero false positives.
-3. **Optional NER** — `dslim/bert-base-NER` via transformers for names, organizations, locations. Off by default because it downloads the model on first use and is capitalization-sensitive (see [`docs/ner-limitations.md`](docs/ner-limitations.md)).
+3. **Optional NER** — the OpenMed `privacy-filter-multilingual-v2` model via transformers for names, organizations, locations and other PII. It is off by default because it downloads the model on first use (see [`docs/ner-limitations.md`](docs/ner-limitations.md)).
 
 Redaction strategies: `placeholder` (stable `[LABEL_N]` tokens — consistent per value) or `fake` (realistic Faker surrogates for documents you want to stay readable).
 
@@ -225,7 +225,6 @@ On the 200-document synthetic benchmark the pipeline scores **F1 = 1.000** for r
 
 **Model layer**
 
-- Swap `bert-base-NER` for a **GLiNER-style zero-shot model** to fix lowercase sensitivity and add new entity types without retraining — or fine-tune a DistilBERT-class model on documents representative of your corpus.
 - Add a **gazetteer / fuzzy-match pass** for customer-specific names (LLM-agnostic, instant to update).
 - Quantize or export the NER model to **ONNX Runtime** (~2–5× CPU inference speedup, smaller memory footprint).
 - Consider **multilingual** models if documents stop being English-only.

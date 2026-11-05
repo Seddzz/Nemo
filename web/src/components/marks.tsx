@@ -4,13 +4,11 @@ import {
   CircleUserRound,
   FileText,
   Gauge,
-  PanelLeft,
   PanelLeftClose,
   PanelLeftOpen,
   Paperclip,
   Pencil,
   Plus,
-  ScanText,
   Search,
   ShieldCheck,
   SlidersHorizontal,
@@ -26,10 +24,6 @@ const iconProps = {
   strokeWidth: 1.75,
   absoluteStrokeWidth: true,
 } as const;
-
-export function MarkLogo({ className }: Props) {
-  return <PanelLeft className={className} {...iconProps} aria-hidden />;
-}
 
 export function MarkAccount({ className }: Props) {
   return <CircleUserRound className={className} {...iconProps} aria-hidden />;
@@ -47,8 +41,25 @@ export function MarkBoard({ className }: Props) {
   return <Gauge className={className} {...iconProps} aria-hidden />;
 }
 
-export function MarkFile({ className }: Props) {
-  return <ScanText className={className} {...iconProps} aria-hidden />;
+export function MarkIncognito({ className }: Props) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M4 10h16" />
+      <path d="M6.5 10 8 5.7A2 2 0 0 1 9.9 4.3h4.2a2 2 0 0 1 1.9 1.4L17.5 10" />
+      <circle cx="7.5" cy="15.5" r="3" />
+      <circle cx="16.5" cy="15.5" r="3" />
+      <path d="M10.5 15.5a1.5 1.5 0 0 1 3 0" />
+    </svg>
+  );
 }
 
 export function MarkNotes({ className }: Props) {

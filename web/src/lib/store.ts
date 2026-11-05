@@ -91,6 +91,7 @@ type State = {
   setNavOrder: (v: NavKey[]) => void;
   setStrict: (v: boolean) => void;
   newThread: () => void;
+  clearThreads: () => void;
   selectThread: (id: string) => void;
   pushMessage: (threadId: string, message: ChatMessage) => void;
   record: (entry: Omit<Activity, "id" | "at">, entityDelta: number, doc?: boolean) => void;
@@ -163,6 +164,11 @@ export const useVault = create<State>()(
         set((s) => {
           const t = blankThread();
           return { threads: [t, ...s.threads].slice(0, 24), activeId: t.id };
+        }),
+      clearThreads: () =>
+        set(() => {
+          const t = blankThread();
+          return { threads: [t], activeId: t.id };
         }),
       selectThread: (id) => set({ activeId: id }),
       pushMessage: (threadId, message) =>

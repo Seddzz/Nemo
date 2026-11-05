@@ -25,7 +25,7 @@ anon                                                     # or: nemo
 ```
 
 If you self-host the API on a container platform (Render, Railway, Fly.io, Hugging
-Face Spaces), the NER model (`dslim/bert-base-NER`) downloads on first use, so give
+Face Spaces), the OpenMed privacy-filter model downloads on first use, so give
 the container about 2 GB of memory.
 
 ## 2. Web app (Vercel)
