@@ -1,8 +1,8 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { PanelLeft } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  LayoutSidebarInsetIcon,
   MarkAccount,
   MarkBoard,
   MarkIncognito,
@@ -17,6 +17,7 @@ import {
 import { NAV_META, orderedNav, type NavKey } from "@/lib/nav";
 import { useVault } from "@/lib/store";
 import { ThemeSwitch, ThemeToggleButton } from "@/components/theme-switch";
+import { FullAccessModal } from "@/components/full-access-modal";
 
 const NAV_ICONS: Record<NavKey, typeof MarkBoard> = {
   dashboard: MarkBoard,
@@ -86,6 +87,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const selectThread = useVault((s) => s.selectThread);
   const navOrder = useVault((s) => s.navOrder);
   const setNavOrder = useVault((s) => s.setNavOrder);
+  const setFullAccessModalOpen = useVault((s) => s.setFullAccessModalOpen);
   const navigate = useNavigate();
 
   function moveNav(index: number, direction: -1 | 1) {
@@ -164,13 +166,10 @@ export function Shell({ children }: { children: ReactNode }) {
               title="Toggle sidebar"
               className="rounded-lg p-2 text-muted transition-colors hover:bg-raised hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime"
             >
-              <PanelLeft className="size-4" />
+              <LayoutSidebarInsetIcon className="size-4" />
             </button>
           </div>
           <div className="flex flex-col gap-0.5 px-2">
-            <div className="px-3 pt-2 pb-1 text-[10px] font-bold tracking-[0.14em] text-faint uppercase">
-              Workspace
-            </div>
             <div className="flex items-center gap-2 px-2 py-1">
               <button
                 type="button"
@@ -267,7 +266,7 @@ export function Shell({ children }: { children: ReactNode }) {
             })}
           </div>
 
-          <div className="mt-5 flex items-center justify-between px-3 text-[10px] font-bold tracking-[0.14em] text-faint uppercase">
+          <div className="mt-5 flex items-center justify-between px-4 text-[10px] font-bold tracking-[0.14em] text-faint uppercase">
             <span>Recents {visible.length}</span>
             {clearConfirm ? (
               <span className="flex items-center gap-2 tracking-normal normal-case">
@@ -331,7 +330,7 @@ export function Shell({ children }: { children: ReactNode }) {
             </div>
             <button
               type="button"
-              onClick={() => window.open("https://buy.stripe.com/test_checkout", "_blank", "noopener,noreferrer")}
+              onClick={() => setFullAccessModalOpen(true)}
               title="Upgrade via Stripe"
               className="mb-2 group flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-[13px] font-bold text-muted transition-colors hover:bg-raised/60 hover:text-fg"
             >
@@ -360,7 +359,7 @@ export function Shell({ children }: { children: ReactNode }) {
                 title="Toggle sidebar"
                 className="rounded-lg p-2 text-muted transition-colors hover:text-lime focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime"
               >
-                <PanelLeft className="size-4" />
+                <LayoutSidebarInsetIcon className="size-4" />
               </button>
             </div>
             <div className="flex flex-col items-center gap-2">
@@ -410,7 +409,7 @@ export function Shell({ children }: { children: ReactNode }) {
               <ThemeToggleButton />
               <button
                 type="button"
-                onClick={() => window.open("https://buy.stripe.com/test_checkout", "_blank", "noopener,noreferrer")}
+                onClick={() => setFullAccessModalOpen(true)}
                 title="Get full access"
                 className="rounded-md p-2 text-muted hover:text-lime"
               >
@@ -479,6 +478,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </motion.div>
         </main>
       </div>
+      <FullAccessModal />
     </div>
   );
 }

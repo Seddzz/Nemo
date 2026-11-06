@@ -76,8 +76,10 @@ type State = {
   messagesRouted: number;
   activity: Activity[];
   ledger: Hit[];
+  fullAccessModalOpen: boolean;
   sampleData: boolean;
   setSampleData: (v: boolean) => void;
+  setFullAccessModalOpen: (open: boolean) => void;
   saveKey: (settings: KeySettings) => void;
   renameThread: (id: string, title: string) => void;
   deleteThread: (id: string) => void;
@@ -111,6 +113,17 @@ function blankThread(): Thread {
   };
 }
 
+function uniqueTitle(base: string, threads: Thread[], excludeId?: string) {
+  const clean = base.trim() || "New conversation";
+  const taken = new Set(
+    threads.filter((t) => t.id !== excludeId).map((t) => t.title.trim().toLowerCase()),
+  );
+  if (!taken.has(clean.toLowerCase())) return clean;
+  let n = 2;
+  while (taken.has(`${clean} ${n}`.toLowerCase())) n += 1;
+  return `${clean} ${n}`;
+}
+
 const first = blankThread();
 
 export const useVault = create<State>()(
@@ -132,12 +145,18 @@ export const useVault = create<State>()(
       messagesRouted: 0,
       activity: [],
       ledger: [],
+      fullAccessModalOpen: false,
       sampleData: true,
       setSampleData: (sampleData) => set({ sampleData }),
+      setFullAccessModalOpen: (fullAccessModalOpen) => set({ fullAccessModalOpen }),
       saveKey: (settings) => set({ ...settings, apiKey: settings.apiKey.trim() }),
       renameThread: (id, title) =>
         set((s) => ({
-          threads: s.threads.map((t) => (t.id === id ? { ...t, title: title.trim() || t.title } : t)),
+          threads: s.threads.map((t) =>
+            t.id === id
+              ? { ...t, title: uniqueTitle(title.trim() || t.title, s.threads, id) }
+              : t,
+          ),
         })),
       deleteThread: (id) =>
         set((s) => {
@@ -163,6 +182,7 @@ export const useVault = create<State>()(
       newThread: () =>
         set((s) => {
           const t = blankThread();
+          t.title = uniqueTitle("New conversation", s.threads);
           return { threads: [t, ...s.threads].slice(0, 24), activeId: t.id };
         }),
       clearThreads: () =>
@@ -176,13 +196,14 @@ export const useVault = create<State>()(
           threads: s.threads.map((t) => {
             if (t.id !== threadId) return t;
             const seed = message.content.trim() || message.attachments?.[0]?.name || "";
+            const raw = seed.replace(/\s+/g, " ").slice(0, 42);
             const title =
               t.messages.length === 0 && message.role === "user"
-                ? seed.replace(/\s+/g, " ").slice(0, 42)
+                ? uniqueTitle(raw || t.title, s.threads, t.id)
                 : t.title;
             return {
               ...t,
-              title: title || t.title,
+              title,
               updatedAt: Date.now(),
               messages: [...t.messages, { ...message, at: message.at ?? Date.now() }],
             };
@@ -205,6 +226,19 @@ export const useVault = create<State>()(
           return { ledger: [...map.values()].slice(-200) };
         }),
     }),
-    { name: "nemo-vault" },
+    {
+      name: "nemo-vault",
+      merge: (persisted, current) => {
+        const merged = { ...current, ...(persisted as Partial<State>) };
+        if (Array.isArray(merged.threads)) {
+          merged.threads = merged.threads.reduce<Thread[]>((acc, thread) => {
+            const title = uniqueTitle(thread.title, acc);
+            acc.push(title === thread.title ? thread : { ...thread, title });
+            return acc;
+          }, []);
+        }
+        return merged;
+      },
+    },
   ),
 );

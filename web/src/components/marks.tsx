@@ -18,7 +18,7 @@ import {
   type LucideProps,
 } from "lucide-react";
 
-type Props = Pick<LucideProps, "className">;
+type Props = LucideProps;
 
 const iconProps = {
   strokeWidth: 1.75,
@@ -29,8 +29,16 @@ export function MarkAccount({ className }: Props) {
   return <CircleUserRound className={className} {...iconProps} aria-hidden />;
 }
 
-export function MarkMoney({ className }: Props) {
-  return <CircleDollarSign className={className} {...iconProps} aria-hidden />;
+export function MarkMoney({ className, strokeWidth, ...props }: Props) {
+  return (
+    <CircleDollarSign
+      className={className}
+      strokeWidth={strokeWidth ?? 1.75}
+      absoluteStrokeWidth
+      {...props}
+      aria-hidden
+    />
+  );
 }
 
 export function MarkPlus({ className }: Props) {
@@ -88,6 +96,21 @@ export function MarkSidebarClose({ className }: Props) {
 
 export function MarkSidebarOpen({ className }: Props) {
   return <PanelLeftOpen className={className} {...iconProps} aria-hidden />;
+}
+
+export function LayoutSidebarInsetIcon({ className }: Props) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      className={className}
+      aria-hidden
+    >
+      <path d="M14 2a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zM2 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2z" />
+      <path d="M3 4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" />
+    </svg>
+  );
 }
 
 export function MarkUpload({ className }: Props) {

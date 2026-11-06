@@ -199,14 +199,14 @@
   --color-muted-foreground: #6a6a62;
   --color-faint: #9c9c93;
   --color-brass: #171714;
-  --color-lime: #5f7d00;
-  --color-secondary: #5f7d00;
+  --color-lime: #171714;
+  --color-secondary: #171714;
   --color-send: #ffffff;
   --color-ink: #ffffff;
   --color-danger: #b3402f;
   --color-ok: #6a7a55;
-  --bubble-sent: #e8f5bd;
-  --bubble-sent-foreground: #1b2400;
+  --bubble-sent: #171714;
+  --bubble-sent-foreground: #ffffff;
   --bubble-received: #efefe9;
   --bubble-received-foreground: #171714;
   --shell-fg-muted: #333333;

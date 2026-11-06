@@ -324,7 +324,7 @@ export function Composer({
                         <p className="px-3 py-2 text-xs text-danger">{modelError}</p>
                       ) : (
                         <div
-                          className="nice-scroll max-h-56 overflow-y-auto pr-1"
+                          className="nice-scroll max-h-36 overflow-y-auto pr-1"
                           role="listbox"
                           aria-label="Available models"
                         >

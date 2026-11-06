@@ -3,7 +3,7 @@ export type NavKey = "dashboard" | "anonymize" | "docs" | "settings";
 export const NAV_META: Record<NavKey, { to: string; label: string }> = {
   dashboard: { to: "/dashboard", label: "Dashboard" },
   anonymize: { to: "/anonymize", label: "Anonymize" },
-  docs: { to: "/docs", label: "Documentation" },
+  docs: { to: "/docs", label: "How it works" },
   settings: { to: "/settings", label: "Settings" },
 };
 
